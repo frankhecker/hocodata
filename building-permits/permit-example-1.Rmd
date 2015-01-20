@@ -1,0 +1,169 @@
+---
+title: "HoCo Building Permits, Example 1"
+author: "Frank Hecker"
+date: "January 20, 2015"
+output: html_document
+---
+
+## Introduction
+
+This is a simple example of analyzing building permit data from the
+`data.howardcountymd.gov` site. We want to answer the following
+question: Which places within Howard County saw the most residential
+building permits issued in 2014?
+
+This question is *not* the same as asking which places saw the most
+housing units built, because a single permit could cover multiple
+dwellings, for example a multi-unit apartment complex. Nevertheless
+the answer will give us a rough picture of where residential
+development is occurring in the county.
+
+## Load needed libraries
+
+For this analysis we’ll be using the [R statistical
+package](http://r-project.org), run from the [R
+Studio](http://www.rstudio.com/products/rstudio/) development
+environment. To help make the analysis easier we’ll first use the
+`library()` function to load an additional R *package*, add-on
+software that provides additional capability not in the base R
+software.
+
+The [dplyr
+package](http://cran.rstudio.com/web/packages/dplyr/vignettes/introduction.html)
+provides functions for manipulating datasets in a fairly intuitive way
+(at least, more intuitive than is often the case with R). Because the
+package provides functions whose names conflict with those elsewhere
+in R, we call the `library()` function with the argument
+`warn.conflicts = FALSE` to suppress associated warning messages.
+
+```{r initialize}
+library("dplyr", warn.conflicts = FALSE)
+```
+
+## Loading the data
+
+First we download the CVS-format data relating to issuance of building
+permits from the `data.howardcountymd.gov` site and store it in a
+local file `hoco-building-permits.csv`.
+
+```{r download}
+download.file("https://data.howardcountymd.gov/geoserver/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=general:Permits_View_Building_New&outputFormat=csv",
+              "hoco-building-permits.csv", method = "curl")
+```
+
+Next we read the CSV data and convert it into a *data frame*, a
+standard R object for representing datasets. A data frame is similar
+to a spreadsheet: It has multiple columns representing different
+variables (one per column), and multiple rows representing different
+sets of values for those variables (one set per row). One major
+difference from a traditional spreadsheet is that we can refer to the
+variables (columns) using meaningful names, rather than using letters
+like ‘A’, ‘B’, and so on.
+
+We use the `stringsAsFactors = FALSE` argument to the `read.csv()`
+function to keep character strings in the data as character strings,
+and not convert them into *factors* (an R data type used for
+*categorical variables*, i.e., variables whose values are like answers
+to a multiple-choice question).
+
+```{r read}
+permits <- read.csv("hoco-building-permits.csv", stringsAsFactors = FALSE)
+```
+
+Now let’s take a look at what’s in the dataset; the `str()` function
+shows the overall structure of the data frame (hence the function
+name):
+
+```{r str}
+str(permits)
+```
+
+The first thing to notice is that there are `r ncol(permits)`
+variables (columns) in the data frame, ranging from `FID` to `geom`.
+
+The second thing to notice is that there are a total of
+`r nrow(permits)` rows in the dataset (“obs.”, or observations), each
+representing a single issued building permit.  Since this dataset gets
+continually updated as more permits are issued, as time goes on the
+number of rows in the dataset will grow.
+
+Finally, the `str()` function prints the first few values for each of
+the variables (corresponding to the first few rows of the data
+frame). These values are numbers with decimals (‘num’), character
+strings (‘str’), or numbers without decimals (‘int’, for integer).
+
+## Choosing which data to work with
+
+As it turns out, we don’t need all the data in the building permits
+dataset in order to answer the question we asked. Our next step is
+therefore to reduce the amount of data we work with. In spreadsheet
+terms this is analogous to selecting only the columns and rows we
+want, and deleting the rest. First we select the variables (columns)
+we want, and then we filter the dataset for the observations (rows) we
+want.
+
+Some of the variables in the permits dataset are not of immediate
+interest to us, including `FID` and `Permit_ID` (internal identifiers
+for each permit), `X`, `Y`, and `geom` (data for mapping), and
+`Is_Capital_Project` (irrelevant for this example).  We also don’t
+care about the entire address, just the city and zip portions.
+
+Looking a bit further, the variable `Permit_Type` appears to always
+have the same value, ‘Building’. We can test this using the `unique()`
+function to print out all the unique values the variable `Permit_Type`
+takes on.  (The syntax `permits$Permit_Type`, with the ‘$’ separating
+`permits` and `Permit_Type`, is how we tell R that we are interested
+in the variable `Permit_Type` within the data frame `permits`.)
+
+```{r unique}
+unique(permits$Permit_Type)
+```
+
+As we thought, this variable always has the same value, presumably
+since all the data in this data set is related to building
+permits. Since the variable doesn’t add any useful information we can
+ignore it as well.
+
+We then start the processing of cutting down the data we’re dealing
+with by creating a new data frame with just the variables we need. The
+`select()` function takes as its first argument a data frame, with the
+remaining arguments naming the variables we want to keep. The function
+returns a new data frame, which we assign to the variable `permits1`.
+
+```{r select}
+permits1 <- select(permits, Issued_Date, Permit_Type_2,
+                   Detailed_Permit_Type, City, Zip)
+str(permits1)
+```
+
+The new data frame `permits1` has only `r ncol(permits1)` variables,
+but still has the full set of `r nrow(permits1)` observations. Having
+picked the variables we want, we now want to cut down the data set to
+include only permits issued in 2014, using the `Issued_Date` variable.
+
+Date handling in R can be somewhat clunky at times, with multiple ways
+of handling dates depending on what you want to do with them. In this
+case the easiest way to identify 2014 permits is to take `Issued_Date`
+as a character string and look for the last part of the string being
+‘2014’, using the `grepl()` function.
+
+(The ‘grep’ part of the name ‘grepl’ comes from the Unix/Linux command
+`grep`; for more information see the relevant [Wikipedia
+article](http://en.wikipedia.org/wiki/Grep). The ‘l’ part of the name
+indicates that the function returns a logical value TRUE or FALSE,
+depending on whether the string in question was found or not. The ‘\$’
+part of the search string ‘/2014$’ tells the function to look for
+‘/2014’ only at the end of the string.)
+
+```{r filter}
+permits2 <- filter(permits1, grepl("/2014$", Issued_Date))
+str(permits2)
+```
+
+The resulting data frame `permits2` has the same `r ncol(permits2)`
+variables as the data frame `permits1`, but has only
+`r nrow(permits2)` observations.
+
+## Counting the number of permits for each place
+
+To be written.
