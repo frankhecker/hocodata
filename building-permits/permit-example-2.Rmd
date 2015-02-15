@@ -1,0 +1,268 @@
+---
+title: "Howard County 2014 Residential Building Permits, Example 2"
+author: "Frank Hecker"
+date: "February 15, 2015"
+output: html_document
+---
+
+## Introduction
+
+This is an extension of my previous example of analyzing building
+permit data from the `data.howardcountymd.gov` site to answer the
+following question: Which localities within Howard County, Maryland,
+saw the most residential building permits issued in 2014?
+
+In this version I streamline the analysis by using a data processing
+“pipeline” and then graph the results.
+
+## Load libraries
+
+For this and future analyses I’ll again be using the [R statistical
+package][] run from the [RStudio][] development environment, along
+with the [dplyr package][] to do data manipulation. Since I want to
+graph the results I also load the [ggplot2 package][], a plotting
+library from the same people who created dplyr.
+
+[R statistical package]: http://r-project.org
+[RStudio]: http://www.rstudio.com/products/rstudio
+[dplyr package]: http://cran.rstudio.com/web/packages/dplyr/vignettes/introduction.html
+[ggplot2 package]: http://ggplot2.org
+
+```{r initialize}
+library("dplyr", warn.conflicts = FALSE)
+library("ggplot2")
+```
+
+## Loading the data
+
+First I download the CVS-format data relating to issuance of building
+permits from the `data.howardcountymd.gov` site and store it in a
+local file `hoco-building-permits.csv`.
+
+```{r}
+download.file("https://data.howardcountymd.gov/geoserver/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=general:Permits_View_Building_New&outputFormat=csv",
+              "hoco-building-permits.csv", method = "curl")
+```
+
+Next I read the CSV data and convert it into a data frame.
+
+```{r}
+permits <- read.csv("hoco-building-permits.csv", stringsAsFactors = FALSE)
+```
+
+At the time of writing there are a total of `r nrow(permits)` rows in
+the dataset, each representing a single issued building permit.  Since
+this dataset gets continually updated as more permits are issued, as
+time goes on the number of rows in the dataset will grow.
+
+## The data processing pipeline
+
+Now that I have the permits data I have to do several data processing
+steps to select only residential permits for 2014, count the number of
+permits per locality and zip code, and sort the data into descending
+order by number of residential permits issued.
+
+In the previous example I did this one step at a time, taking one data
+set and processing it to produce a new data set, then taking that data
+set and processing it to produce yet another data set, and so on until
+I had the final data set containg the results. Fortunately the dplyr
+package provides a simpler way to specify these steps, using so-called
+“pipeline” syntax.
+
+The basic idea is this: Suppose we have a data set `dsinput` with
+variables `a`, `b`, `c`, and so on, and we want to transform it into a
+second data set `dsoutput` by first selecting only variables `a` and
+`b` and then filtering to include only rows where the value of `a` is
+equal to 100. In the more traditional approach we would first do the
+selection of variables as follows to create a temporary data frame
+`dstemp`:
+
+```
+dstemp <- select(dsinput, a, b)
+```
+
+and then filter `dstemp` to create the final data set `dsoutput`:
+
+```
+dsoutput <- filter(dstemp, a == 100)
+```
+
+The dplyr pipeline syntax allows us to express the first step as
+follows:
+
+```
+dstemp <- dsinput %>% select(a, b)
+```
+
+The syntax `dsinput %>% select(a, b)` is equivalent to `select(dsinput,
+a, b)` but better expresses the idea of a pipeline where the results
+of one step are used as input to the next step.
+
+Similarly we can re-write the second step as follows:
+
+```
+dsoutput <- dstemp %>% filter(a == 100)
+```
+
+where `dstemp %>% filter(a == 100)` is equivalent to `filter(dstemp,
+a == 100)`.
+
+But now that we’re using the pipeline syntax like this we no longer
+need to explicitly reference the intermediate data frame
+`dstemp`. Instead we can express the entire data processing pipeline
+in one line:
+
+```
+dsoutput <- dsinput %>% select(a, b) %>% filter(a == 100)
+```
+
+If we want to add additional data processing steps we can simply
+insert them into the pipeline as appropriate.
+
+## The streamlined analysis
+
+In this case I need to do the following processing steps:
+
+* Start with the `permits` data set I just read in.
+* Select only the variables of interest.
+* Filter the data to include only residential permits.
+* Filter the data to include only permits issued in 2014.
+* Create a new variable to store the combined locality name and zip
+  code.
+* Group the permits by locality/zip code.
+* Count the number of permits in each group.
+* Sort the rows into descending order based on the number of permits.
+* Produce a final data set `permits_by_zip`.
+
+Using the pipeline syntax I can compress all of the steps in the above
+list into one R statement:
+
+```{r}
+permits_by_zip <- permits %>%
+    select(Issued_Date, Permit_Type_2, Detailed_Permit_Type, City, Zip) %>%
+    filter(Permit_Type_2 == "Residential") %>%
+    filter(grepl("/2014$", Issued_Date)) %>%
+    mutate(CityZip = paste(City, Zip, sep = "/")) %>%
+    group_by(CityZip) %>%
+    summarise(Permits = n()) %>%
+    arrange(desc(Permits))
+```
+
+The new data frame `permits_by_zip` has only `r nrow(permits_by_zip)`
+rows, one per locality, and only two fields: `CityZip`, the variable I
+grouped by, and `Permits`, the variable containing the number of
+permits in each group (returned by the `n()` function).
+
+## Graphing the number of permits by locality
+
+As I did before, I print the entire resulting data frame to show all
+of the localities and the number of residential building permits
+issued for each one in 2014.
+
+```{r}
+print.data.frame(permits_by_zip)
+```
+
+However it would also be nice to have a graph of the data, say as a
+bar chart, in order to get a better sense of the relative numbers of
+permits issued in each locality and zip code. I do that using the
+ggplot2 package, which implements a “grammar of graphics” (hence the
+name) that is somewhat difficult to learn but once learned makes it
+relatively easy to produce professional-looking graphs.
+
+I first start out with a relatively basic graph, a bar chart with the
+minimum information specified in order to produce a plot. I use the
+`ggplot()` function to specify the data going into the plot (the
+`permits_by_zip` data frame) and the “aesthetics” of the plot, that
+is, that I want to plot the localities on the x axis and the number of
+permits on the y axis:
+
+```{r}
+g <- ggplot(permits_by_zip, aes(x = CityZip, y = Permits))
+```
+
+The `ggplot()` function returns an object `g` that I can then modify
+to produce the actual graph. In this case I want to start with a
+simple bar chart, so I modify `g` to include a geometric object or
+“geom” consisting of multiple bars (one per locality/zip code) with
+the height of the bars equal to the value of the `Permits`
+variable. (This is what the `stat = "identity"` expression specifies.)
+I then use the `print()` function to actually plot the graph.
+
+```{r}
+g <- g + geom_bar(stat = "identity")
+print(g)
+```
+
+Unfortunately this graph falls short in a number of areas. Most
+notably the names of the localities are all run together in a way that
+makes them unreadable. I can improve the graph by doing the
+following:
+
+* Add more descriptive labels for the x and y axes.
+* Add a descriptive title for the graph.
+* Most important, reorient the locality names and zip codes so that
+  they run vertically rather than horizontally.
+
+I modify the graph object `g` to make these changes and then print it
+again. The `xlab()`, `ylab()`, and `ggtitle()` functions should be
+self-explanatory. Reorienting the names and zip codes is a bit more
+complicated. I confess that I resorted to an online search to find
+an [answer on the Stack Overflow developer site][stackoverflow]
+that describes how to do this. (Although it’s apparent only in the
+underlying source code for this document, I also increased the height
+of the overall graph a bit to compensate for the extra space taken up
+by the vertical labels.)
+
+[stackoverflow]: http://stackoverflow.com/questions/1330989/rotating-and-spacing-axis-labels-in-ggplot2
+
+```{r fig.height = 6}
+g <- g +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+    xlab("Locality/Zip Code") +
+    ylab("Number of Permits Issued") +
+    ggtitle("Howard County, Maryland, 2014 Residential Building Permits")
+print(g)
+```
+
+This graph could be further improved in various ways, but as is it
+presents the information in a reasonably readable way.
+
+## Conclusion
+
+Using data processing pipelines with the dplyr functions makes it much
+easier to understand conceptually what’s going on in the analysis:
+each step performs a clearly delineated task, with its output being
+the input for the next step. It’s easy to see how the above analysis
+could be modified to cover a different year, or to count commercial
+building permits rather than residential permits.
+
+The ggplot2 package is a natural complement to dplyr, as both
+use data frames as their data structure of choice. In this case
+plotting the data makes it much easier to see the wide disparities
+among localities in Howard County in terms of residential building
+permit issuance.
+
+That concludes this example of analyzing Howard County building permit
+data. If I have time to do another example I’ll try to create an
+actual map showing the relative number of permits issued per zip code
+within the county.
+
+## Appendix
+
+I used the following R environment in doing the analysis for this
+example:
+
+```{r sessionInfo}
+sessionInfo()
+```
+
+You can find the source code for this analysis and others at my
+[HoCoData repository on GitHub][hocodata]. This document and its
+source code are available for unrestricted use, distribution and
+modification under the terms of the Creative Commons [CC0 1.0
+Universal (CC0 1.0) Public Domain Dedication][CC0].  Stated more
+simply, you’re free to do whatever you‘d like with it.
+
+[hocodata]: https://github.com/frankhecker/hocodata
+[CC0]: https://creativecommons.org/publicdomain/zero/1.0/
