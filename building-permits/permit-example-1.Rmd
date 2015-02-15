@@ -1,29 +1,29 @@
 ---
-title: "HoCo Building Permits, Example 1"
+title: "Howard County 2014 Residential Building Permits, Example 1"
 author: "Frank Hecker"
-date: "January 20, 2015"
+date: "February 14, 2015"
 output: html_document
 ---
 
 ## Introduction
 
 This is a simple example of analyzing building permit data from the
-`data.howardcountymd.gov` site. We want to answer the following
-question: Which places within Howard County saw the most residential
-building permits issued in 2014?
+`data.howardcountymd.gov` site. I want to answer the following
+question: Which localities within Howard County, Maryland, saw the
+most residential building permits issued in 2014?
 
 This question is *not* the same as asking which places saw the most
 housing units built, because a single permit could cover multiple
 dwellings, for example a multi-unit apartment complex. Nevertheless
-the answer will give us a rough picture of where residential
-development is occurring in the county.
+the answer will give a rough picture of where residential development
+is occurring in the county.
 
 ## Load needed libraries
 
-For this analysis we’ll be using the [R statistical
+For this analysis I’ll be using the [R statistical
 package](http://r-project.org), run from the [R
 Studio](http://www.rstudio.com/products/rstudio/) development
-environment. To help make the analysis easier we’ll first use the
+environment. To help make the analysis easier I’ll first use the
 `library()` function to load an additional R *package*, add-on
 software that provides additional capability not in the base R
 software.
@@ -33,7 +33,7 @@ package](http://cran.rstudio.com/web/packages/dplyr/vignettes/introduction.html)
 provides functions for manipulating datasets in a fairly intuitive way
 (at least, more intuitive than is often the case with R). Because the
 package provides functions whose names conflict with those elsewhere
-in R, we call the `library()` function with the argument
+in R, I call the `library()` function with the argument
 `warn.conflicts = FALSE` to suppress associated warning messages.
 
 ```{r initialize}
@@ -42,31 +42,31 @@ library("dplyr", warn.conflicts = FALSE)
 
 ## Loading the data
 
-First we download the CVS-format data relating to issuance of building
+First I download the CVS-format data relating to issuance of building
 permits from the `data.howardcountymd.gov` site and store it in a
 local file `hoco-building-permits.csv`.
 
-```{r download}
+```{r}
 download.file("https://data.howardcountymd.gov/geoserver/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=general:Permits_View_Building_New&outputFormat=csv",
               "hoco-building-permits.csv", method = "curl")
 ```
 
-Next we read the CSV data and convert it into a *data frame*, a
+Next I read the CSV data and convert it into a *data frame*, a
 standard R object for representing datasets. A data frame is similar
 to a spreadsheet: It has multiple columns representing different
 variables (one per column), and multiple rows representing different
 sets of values for those variables (one set per row). One major
-difference from a traditional spreadsheet is that we can refer to the
-variables (columns) using meaningful names, rather than using letters
-like ‘A’, ‘B’, and so on.
+difference from a traditional spreadsheet is that in R you can refer
+to the variables (columns) using meaningful names, rather than using
+letters like ‘A’, ‘B’, and so on.
 
-We use the `stringsAsFactors = FALSE` argument to the `read.csv()`
+I use the `stringsAsFactors = FALSE` argument to the `read.csv()`
 function to keep character strings in the data as character strings,
 and not convert them into *factors* (an R data type used for
 *categorical variables*, i.e., variables whose values are like answers
 to a multiple-choice question).
 
-```{r read}
+```{r}
 permits <- read.csv("hoco-building-permits.csv", stringsAsFactors = FALSE)
 ```
 
@@ -74,7 +74,7 @@ Now let’s take a look at what’s in the dataset; the `str()` function
 shows the overall structure of the data frame (hence the function
 name):
 
-```{r str}
+```{r}
 str(permits)
 ```
 
@@ -94,43 +94,43 @@ strings (‘str’), or numbers without decimals (‘int’, for integer).
 
 ## Choosing which data to work with
 
-As it turns out, we don’t need all the data in the building permits
-dataset in order to answer the question we asked. Our next step is
-therefore to reduce the amount of data we work with. In spreadsheet
-terms this is analogous to selecting only the columns and rows we
-want, and deleting the rest. First we select the variables (columns)
-we want, and then we filter the dataset for the observations (rows) we
-want.
+As it turns out I don’t need all the data in the building permits
+dataset in order to answer the question I asked. My next step is
+therefore to reduce the amount of data I’m working with. In
+spreadsheet terms this is analogous to selecting only the columns and
+rows I want, and deleting the rest. First I select the variables
+(columns) I want, and then I filter the dataset for the observations
+(rows) I want.
 
 Some of the variables in the permits dataset are not of immediate
-interest to us, including `FID` and `Permit_ID` (internal identifiers
-for each permit), `X`, `Y`, and `geom` (data for mapping), and
-`Is_Capital_Project` (irrelevant for this example).  We also don’t
-care about the entire address, just the city and zip portions.
+interest, including `FID` and `Permit_ID` (internal identifiers for
+each permit), `X`, `Y`, and `geom` (data for mapping), and
+`Is_Capital_Project` (irrelevant for this example). I also don’t care
+about the entire address, just the city and zip portions.
 
 Looking a bit further, the variable `Permit_Type` appears to always
-have the same value, ‘Building’. We can test this using the `unique()`
+have the same value, ‘Building’. I can test this using the `unique()`
 function to print out all the unique values the variable `Permit_Type`
 takes on.  (The syntax `permits$Permit_Type`, with the ‘$’ separating
-`permits` and `Permit_Type`, is how we tell R that we are interested
-in the variable `Permit_Type` within the data frame `permits`.)
+`permits` and `Permit_Type`, is how I tell R that I am interested in
+the variable `Permit_Type` within the data frame `permits`.)
 
-```{r unique}
+```{r}
 unique(permits$Permit_Type)
 ```
 
-As we thought, this variable always has the same value, presumably
+As I thought, this variable always has the same value, presumably
 since all the data in this data set is related to building
-permits. Since the variable doesn’t add any useful information we can
+permits. Since the variable doesn’t add any useful information I can
 ignore it as well.
 
-We then start the processing of cutting down the data we’re dealing
-with by creating a new data frame with just the variables we need. The
+I then start the process of cutting down the data I’m dealing with by
+creating a new data frame with just the variables I need. The
 `select()` function takes as its first argument a data frame, with the
-remaining arguments naming the variables we want to keep. The function
-returns a new data frame, which we assign to the variable `permits1`.
+remaining arguments naming the variables I want to keep. The function
+returns a new data frame, which I assign to the variable `permits1`.
 
-```{r select}
+```{r}
 permits1 <- select(permits, Issued_Date, Permit_Type_2,
                    Detailed_Permit_Type, City, Zip)
 str(permits1)
@@ -138,14 +138,41 @@ str(permits1)
 
 The new data frame `permits1` has only `r ncol(permits1)` variables,
 but still has the full set of `r nrow(permits1)` observations. Having
-picked the variables we want, we now want to cut down the data set to
-include only permits issued in 2014, using the `Issued_Date` variable.
+picked the variables I want, I now want to cut down the data set to
+include only the permits I’m interested in.
+
+My original question was about residential permits, so I want to
+filter the data to eliminate non-residential permits. Looking at the
+values in `permits2` it appears that the variable `Permit_Type_2` will
+allow me to figure out which permits are for residential construction
+and which are not. I confirm this by using the `unique()` function to
+print out all the unique values that the variable `Permit_Type_2`
+takes on.
+
+```{r}
+unique(permits1$Permit_Type_2)
+```
+
+As I thought, this variable has the value ‘Residential’ for
+residential building permits and ‘Commercial’ for non-residential
+permits. I can therefore filter the data again to create a new data
+frame `permits2` that contains only residential permits. (The operator
+‘==’ is a check for equality, that is, that the value of the variable
+`Permit_Type_2` is the character string ‘Residential’.)
+
+```{r}
+permits2 <- filter(permits1, Permit_Type_2 == "Residential")
+str(permits2)
+```
+
+I next want to restrict myself to permits issued in 2014, using the
+`Issued_Date` variable.
 
 Date handling in R can be somewhat clunky at times, with multiple ways
 of handling dates depending on what you want to do with them. In this
 case the easiest way to identify 2014 permits is to take `Issued_Date`
 as a character string and look for the last part of the string being
-‘2014’, using the `grepl()` function.
+‘/2014’, using the `grepl()` function.
 
 (The ‘grep’ part of the name ‘grepl’ comes from the Unix/Linux command
 `grep`; for more information see the relevant [Wikipedia
@@ -155,15 +182,107 @@ depending on whether the string in question was found or not. The ‘\$’
 part of the search string ‘/2014$’ tells the function to look for
 ‘/2014’ only at the end of the string.)
 
-```{r filter}
-permits2 <- filter(permits1, grepl("/2014$", Issued_Date))
-str(permits2)
+```{r}
+permits3 <- filter(permits2, grepl("/2014$", Issued_Date))
+str(permits3)
 ```
 
-The resulting data frame `permits2` has the same `r ncol(permits2)`
+The resulting data frame `permits3` has the same `r ncol(permits2)`
 variables as the data frame `permits1`, but has only
-`r nrow(permits2)` observations.
+`r nrow(permits3)` observations.
 
-## Counting the number of permits for each place
+## Counting the number of permits for each locality
 
-To be written.
+I now want to count the number of permits issued for each locality
+within Howard County. There are two variables that specify the
+location for which the permit was issued: `City` and `Zip`. I again
+use the `unique()` function to determine what values these variables
+contain:
+
+```{r}
+unique(permits3$City)
+unique(permits3$Zip)
+```
+
+It looks as if there are more zip codes than locality names, probably
+because both Columbia and Ellicott City contain multiple zip
+codes. It’s useful to be able to go down to individual zip codes, but
+the zip codes are hard to interpret for people not familiar with the
+area.
+
+To get the best of both approaches I use the `mutate()` function to
+create a new data frame with the `City` and `Zip` variables
+consolidated into a single variable `CityZip`. The `paste()` function
+pastes together the values of the two original variables with a slash
+character used as a separator.
+
+```{r}
+permits4 <- mutate(permits3, CityZip = paste(City, Zip, sep = "/"))
+str(permits4)
+```
+
+I’m now ready to count the number of residential building permits in
+each locality. I first use the function `group_by()` to group the
+permits based on the values of the `CityZip` variables, and then use
+the function `summarise()` to count the number of permits in each
+group.
+
+```{r}
+permits5 <- group_by(permits4, CityZip)
+permits6 <- summarise(permits5, Permits = n())
+str(permits6)
+```
+
+The new data frame has only `r nrow(permits6)` rows, one per locality,
+and only two fields: `CityZip`, the variable I grouped by, and
+`Permits`, the variable containing the number of permits in each group
+(returned by the `n()` function).
+
+## Displaying the number of permits by locality
+
+Since I’m interested in which localities had the most permits issued I
+sort the rows using the `arrange()` function to put them in descending
+order based on the `Permits` variable.
+
+```{r}
+permits7 <- arrange(permits6, desc(Permits))
+```
+
+Finally I print the entire data frame to show all of the localities
+and the number of residential building permits issued for each one in
+2014.
+
+```{r}
+print.data.frame(permits7)
+```
+
+## Conclusion
+
+Given that the two Ellicott City zip codes cover a relatively large
+and populous area of Howard County (see the [zip code
+map](https://data.howardcountymd.gov/mapgallery/misc/Zipcodes22X34.pdf)
+on `data.howardcountymd.gov`), it’s not surprising that Ellicott City
+saw the most residential permits issued in 2014. Marriottsville,
+Fulton, and Elkridge also saw a lot of residential
+development. However it’s interesting to note that East Columbia
+(21045 zip code) had only two residential building permits issued in
+all of 2014.
+
+That concludes this example of analyzing Howard County building permit
+data. In the next example I’ll show how to streamline the analysis and
+then create a graph from the summary data.
+
+## Appendix 1: R environment
+
+I used the following R environment in doing the analysis for this
+example:
+
+```{r sessionInfo}
+sessionInfo()
+```
+
+## Appendix 2: Public domain dedication
+
+I am making this work available under the terms of the Creative
+Commons [CC0 1.0 Universal (CC0 1.0) Public Domain
+Dedication](https://creativecommons.org/publicdomain/zero/1.0/).
