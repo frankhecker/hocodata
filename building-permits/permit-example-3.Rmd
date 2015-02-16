@@ -1,0 +1,395 @@
+---
+title: "Howard County 2014 Residential Building Permits, Example 3"
+author: "Frank Hecker"
+date: "February 16, 2015"
+output: html_document
+---
+
+## Introduction
+
+This is a continuation of my previous examples of analyzing building
+permit data from the `[data.howardcountymd.gov][data]` site to answer the
+following question: Which localities within Howard County, Maryland,
+saw the most residential building permits issued in 2014?
+
+[data]: http://data.howardcountymd.gov/
+
+In this version I create a map of Howard County with the varying
+number of permits shown using variations in color from one zip
+code area to another.
+
+[data.howardcountymd.gov]: http://data.howardcountymd.gov/
+
+## Load packages
+
+For this analysis I’ll again be using the [R statistical
+package][] run from the [RStudio][] development environment, along
+with the [dplyr package][] to do data manipulation and the [ggplot2
+package][] to draw the map.
+
+[R statistical package]: http://r-project.org
+[RStudio]: http://www.rstudio.com/products/rstudio
+[dplyr package]: http://cran.rstudio.com/web/packages/dplyr/vignettes/introduction.html
+[ggplot2 package]: http://ggplot2.org
+
+```{r}
+library("dplyr", warn.conflicts = FALSE)
+library("ggplot2")
+```
+
+I also need to load several R packages used to manipulate spatial
+data in R. I first load the [sp package][], a prerequisite for using
+the other packages. I use the [rgdal package][] to load spatial data
+on zip code boundaries downloaded from `data.howardcountymd.gov`,
+and the [rgeos][] and [maptools][] packages to manipulate the spatial
+data once loaded. The maptools package checks on the presence of
+the rgeos package, so I load rgeos first and then maptools.
+
+[sp package]: http://cran.r-project.org/web/packages/sp/index.html
+[rgdal package]: http://cran.r-project.org/web/packages/rgdal/index.html
+[rgeos]: http://cran.r-project.org/web/packages/rgeos/index.html
+[maptools]: http://cran.r-project.org/web/packages/maptools/index.html
+
+```{r}
+library("sp")
+library("rgdal")
+library("rgeos")
+library("maptools")
+```
+
+I should note here (having forgotten to do it in the previous
+examples) that none of the packages above are part of the base R
+system, and so I had to install them using the
+`install.packages()` function. The mapping packages also require
+installing sets of underlying mapping libraries. Doing this is not
+trivial, and varies from operating system to operating system.
+Unfortunately I don’t have space in this document to describe the
+entire process.
+
+## Loading the data
+
+First I download the CVS-format data relating to issuance of building
+permits from the `data.howardcountymd.gov` site and store it in a
+local file `hoco-building-permits.csv`. (This is the same process as
+in the previous examples.)
+
+```{r}
+download.file("https://data.howardcountymd.gov/geoserver/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=general:Permits_View_Building_New&outputFormat=csv",
+              "hoco-building-permits.csv", method = "curl")
+```
+
+Then I download spatial data from `data.howardcountymd.gov`
+spcifying the boundaries of Howard County zip code areas. The
+Howard County GIS Division rather nicely offers this data in
+a variety of formats; I chose to use the GeoJSON format, and 
+thus stored the data locally in a file `zipcodes.json`.
+
+```{r}
+download.file("https://data.howardcountymd.gov/geoserver/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=general:Zipcodes&outputFormat=application/json", "zipcodes.json", method = "curl")
+```
+
+Next I read the CSV data for building permits and convert it into a
+data frame. (Again, this is the same process as in the last two
+examples.)
+
+```{r}
+permits <- read.csv("hoco-building-permits.csv", stringsAsFactors = FALSE)
+```
+
+Finally I read in the GeoJSON zip code data. The `readOGR()` function
+is part of the rgdal package; since the function understands multiple
+format I have to tell it which format this file is in.
+
+```{r}
+zips <- readOGR("zipcodes.json", "OGRGeoJSON")
+str(zips@data)
+```
+
+The `zips` variable is not a regular data frame but rather is a
+special type of data structure, a “SpatialPolygonsDataFrame”
+containing both a regular data frame (in `zips@data`) and a list
+of 25 “polygons” containing map data for the 25 Howard County
+zip codes.
+
+## Data processing
+
+I first need to repeat the processing steps from the prior examples to
+get a count of residential permits issued for each zip code in
+2014. The main difference in this example is that I choose to work
+only with zip codes and do not need the locality names.
+
+```{r}
+permits_by_zip <- permits %>%
+    select(Issued_Date, Permit_Type_2, Detailed_Permit_Type, City, Zip) %>%
+    filter(Permit_Type_2 == "Residential") %>%
+    filter(grepl("/2014$", Issued_Date)) %>%
+    group_by(Zip) %>%
+    summarise(Permits = n()) %>%
+    arrange(desc(Permits))
+```
+
+Now I have to further modify the `permits_by_zip` data frame to add
+data for zip codes for which there were no permits issued in 2014. (I
+neglected to do this the first time, and the resulting map was messed
+up something awful.)
+
+The `permits_by_zip` data frame includes the following zip codes:
+
+```{r}
+sort(permits_by_zip$Zip)
+```
+
+The `zips@data` data frame within the `zips` data structure contains
+the following zip codes:
+
+```{r}
+sort(unique(zips@data$ZIPCODE))
+```
+
+I want to find all zip codes that are in the zip code map but not in
+`permits_by_zip`. I first convert the `ZIPCODE` values from
+`zips@data` into integers, to match the `permits_by_zip$Zip` values.
+(I have to convert the `ZIPCODE` values first to characters and then
+to integers because the values are _factors_, an R data type that has
+some odd properties.)
+
+
+```{r}
+map_zips <- as.integer(as.character(zips@data$ZIPCODE))
+str(map_zips)
+```
+
+I then use the `setdiff()` function to find the set of zip codes in
+`map_zips` that are not in `permits_by_zip$Zip`. (I reference the
+`setdiff()` function as `base:setdiff` to avoid a name conflict with a
+function of the same name in the dplyr package.)  I store the
+resulting set of zips codes in a variable named `Zip`, for reasons
+which will become apparent in the next step.
+
+
+```{r}
+Zip <- base::setdiff(map_zips, permits_by_zip$Zip)
+Zip
+```
+
+Next I use the variable `Zip` to create a data frame `permits_by_zip2`
+with a single variable `permits_by_zip2$Zip` as the first and only
+column. Then I add a new column `permits_by_zip2$Permits` with all
+zero values. Finally I combine the original `permits_by_zip` data
+frame with the newly-created `permits_by_zip2` data frame to create a
+modified `permits_by_zip` data frame with rows for the formerly
+missing zip codes. (This is why I chose the name `Zip` above for the
+column in `permits_by_zip2`, to match the corresponding column name in
+`permits_by_zip`.)
+
+Since I might want to reuse this code for future years, I allow for
+the possibility that there are no zip codes without permits issued in
+a given year, and do all this only if the set of missing zip codes is
+non-empty.
+
+```{r}
+if (length(Zip) > 0) {
+    permits_by_zip2 <- as.data.frame(Zip)
+    permits_by_zip2$Permits <- 0
+    permits_by_zip <- bind_rows(permits_by_zip, permits_by_zip2)
+}
+```
+
+I then print the entire resulting data frame to show the added rows
+for the zip codes with no permits issued in 2014.
+
+```{r}
+print.data.frame(permits_by_zip)
+```
+
+## Mapping the number of permits by zip code
+
+Now comes the fun part: actually mapping the data. I first use the
+`plot()` function in base R to verify that the `zips` data structure
+actually contains the necessary data to produce a zip code map of
+Howard County.
+
+```{r}
+plot(zips)
+```
+
+So far so good. I now have two possible strategies I can follow. What
+I want to do is to color each of the zip code areas differently
+according to the number of permits issued in that particular
+area. (Fun fact: This is called a [choropleth map][].)
+
+[choropleth map]: http://en.wikipedia.org/wiki/Choropleth_map
+
+One way to do this is to use the `plot()` function in base R and
+provide a vector of colors to use in coloring each zip code area
+(polygon), with the colors calculated according to the number of
+permits issued. The `plot()` function doesn’t know how to do this
+calculation itself, so I would have to write code to do it.
+
+The other approach is to use the `ggplot()` function from the ggplot2
+package. The `ggplot()` function already knows how to pick colors based
+on data values. However it doesn’t understand the `zips` data
+structure (a SpatialPolygonsDataFrame), so I have to convert that data
+into the type of data frame that `ggplot()` expects.
+
+In this analysis I follow the second strategy. I got the basic idea
+for how to do this from the answers to a Stack Overflow question “[R
+ggplot2 merge with shapefile and csv data to fill
+polygons][stackoverflow]”. I have to add a new column `id` to the data
+frame `zip@data` inside `zips`, use the function `fortify()` to
+convert the polygons in `zips` into individual latitude/longitude
+pairs grouped by `id`, then merge that data with the data in `zip@data`
+to create a new data frame `zips_df`.
+
+[stackoverflow]: http://stackoverflow.com/questions/19791210/r-ggplot2-merge-with-shapefile-and-csv-data-to-fill-polygons
+
+```{r}
+zips@data$id <- rownames(zips@data)
+zips_points <- fortify(zips, region = "id")
+zips_df <- merge(zips_points, zips@data, by = "id")
+str(zips_df)
+```
+
+The resulting variable `zips_df` looks more like the sort of data
+frame we’ve in previous examples; each row (observation) corresponds
+to a point in the set of polygons representing the zip code
+boundaries, and includes values for the zip code with which the point
+is associated.
+
+Now I want to combine the `zips_df` data frame with the
+`permits_by_zip` data to create a consolidated data set with the
+number of permits included. To do that I first create a new variable
+`zips_df$Zip` that is of the same integer data type as the variable
+`permits_by_zip$Zip`, and then join the two data frames together based
+on that common variable. The `left_join()` function (from the dplyr
+package) takes all the rows in the `zips_df` data frame for each zip
+code and adds the `Permits` column from the row in `permits_by_zip`
+that has a matching zip code.
+
+```{r}
+zips_df <- mutate(zips_df, Zip = as.integer(as.character(ZIPCODE)))
+zips_df <- left_join(zips_df, permits_by_zip, by = "Zip")
+str(zips_df)
+```
+
+Now I have something `ggplot()` can deal with. I tell `ggplot()` to
+plot `zips_df` using the `long` (longitude) values on the x axis and
+the `lat` (latitude) values on the y axis. Then I add to the graph
+object `g` the drawing of actual polygons, grouping the points
+together that correspond to the various polygons, with the color of
+each polygon (the “fill” value) determined based on the value of the
+`zips_df$Permits` value for that polygon.
+
+```{r}
+g <- ggplot(zips_df, aes(x = long, y = lat, group = group, fill = Permits))
+g <- g + geom_polygon(aes(group = group, fill = Permits))
+print(g)
+```
+
+This map doesn’t look bad as a first attempt. The colors do reflect
+the number of permits, and there’s even a nice legend to specify
+how they match up. However the map looks somewhat squished in the
+horizontal direction, and I don’t really need or want the latitude
+and longitude values on the axes.
+
+Those are relatively easy things to fix. However what I really want to
+do is more complicated: I'd like to label each area with its zip code
+value. To do this I first need to figure out where to put the zip code
+labels on the map. I use the `coordinates()` function to find the
+centers (more correctly, the [centroids][]) of each of the 25 polygons
+in the original `zips` data structures that store the zip code
+boundaries.
+
+[centroids]: http://en.wikipedia.org/wiki/Centroid
+
+```{r}
+zips_centers = coordinates(zips)
+str(zips_centers)
+```
+
+The `zips_centers` variable is a matrix of 25 rows and 2 columns. To
+use it with `ggplot()` I have to convert it into a data frame,
+including giving the two columns their correct names (“long” and
+“lat”). I then add a third column containing the zip code values from
+the `zips@data` data frame within the `zips` data structure. (This
+works because the zip code values in `zips@data` are in the same
+order as the polygons corresponding to those zip codes.)
+
+```{r}
+zips_centers_df <- as.data.frame(zips_centers)
+names(zips_centers_df) <- c("long", "lat")
+zips_centers_df$Zip = as.character(zips@data$ZIPCODE)
+str(zips_centers_df)
+```
+
+Now I have two data frames, `zips_df` and `zips_centers_df`, and I
+want to plot them on the same map. To do this I start off with an
+“empty” graph object, created by calling `ggplot()` with no
+arguments. I next add a layer consisting of polygons for the zip code
+areas, with latitude and longitude data taken from `zips_df` and the
+polygons colored according to the `Permits` variable in
+`zips_df`. Then I add a second layer consisting of text strings for
+the zip codes themselves, with latitude and longitude data taken from
+`zips_centers_df`, the text labels themselves from the `Zip` variable
+in `zips_centers_df`, and the text colored and sized as indicated.  (I
+had to experiment a little to find a text size that worked well.)
+
+```{r}
+g <- ggplot()
+g <- g + geom_polygon(data = zips_df, aes(x = long, y = lat,
+                      group = group, fill = Permits))
+g <- g + geom_text(data = zips_centers_df, aes(x = long, y = lat, label = Zip),
+                   size = 2.5, colour = "white", show_guide = FALSE)
+```
+
+Finally I made a few other minor fixes to the graph: Setting the
+coordinates so that the map would have a proper aspect ratio, removing
+the text strings on the x and y axes, and giving the map a suitable
+title.
+
+```{r}
+g <- g + coord_equal()
+g <- g + theme(axis.title = element_blank(), axis.text = element_blank())
+g <- g + ggtitle("Howard County, Maryland, 2014 Residential Building Permits")
+print(g)
+```
+
+There are a few other things I might want to do in a perfect world,
+but as it is the resulting graph looks reasonably professional.
+
+## Conclusion
+
+In this example I made the big leap from tables and bar charts to
+actual data-driven maps. It was a fair amount of trouble to install
+all the necessary geospatial software (all free, by the way) and
+figure out how to use the geospatial data with ggplot2, but I think
+the results were well worth it.
+
+That concludes this example of analyzing Howard County building permit
+data. Unless I can think of something else worth doing this will be
+the last example in this particular series.
+
+## Appendix
+
+I used the following R environment in doing the analysis for this
+example:
+
+```{r sessionInfo}
+sessionInfo()
+```
+
+The underlying GDAL and GEOS libraries for the rgeos and rgdal
+packages are from the KyngChaos [GDAL Complete][] distribution version
+1.11 for Mac OS X.
+
+[GDAL Complete]: http://www.kyngchaos.com/software/frameworks#gdal_complete
+
+You can find the source code for this analysis and others at my
+[HoCoData repository on GitHub][hocodata]. This document and its
+source code are available for unrestricted use, distribution and
+modification under the terms of the Creative Commons [CC0 1.0
+Universal (CC0 1.0) Public Domain Dedication][CC0].  Stated more
+simply, you’re free to do whatever you‘d like with it.
+
+[hocodata]: https://github.com/frankhecker/hocodata
+[CC0]: https://creativecommons.org/publicdomain/zero/1.0/
