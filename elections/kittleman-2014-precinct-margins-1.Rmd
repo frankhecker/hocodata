@@ -1,0 +1,265 @@
+---
+title: "Allan Kittleman’s Election-Day Victory Margins in the Howard
+County 2014 General Election, Part 1"
+author: "Frank Hecker"
+date: "February 18, 2015"
+output: html_document
+---
+
+## Introduction
+
+This analysis uses precinct-level results from the Howard County 2014
+general election (courtesy of the [Maryland State Board of
+Elections][MSBoE]) to look at Allan Kittleman’s margins of victory
+across the county on election day. I’m interested in the general
+question of whether there seemed to be an “enthusiasm gap” in which
+Kittleman’s election-day results were particularly lopsided, e.g., due
+to increased turnout of Republican voters or unusually high support
+for Kittleman from Democrats and unaffiliated voters.
+
+[MSBoE]: http://elections.state.md.us/elections/2014/election_data/index.html
+
+In this document I present the data in the form of histograms.
+
+## Load packages
+
+For this analysis I use the [R statistical package][] run from the
+[RStudio][] development environment, along with the [dplyr][] and
+[tidyr][] packages to do data manipulation and the [ggplot2][] package
+to draw the histograms.
+
+[R statistical package]: http://r-project.org
+[RStudio]: http://www.rstudio.com/products/rstudio
+[dplyr]: http://cran.rstudio.com/web/packages/dplyr/vignettes/introduction.html
+[tidyr]: http://blog.rstudio.org/2014/07/22/introducing-tidyr/
+[ggplot2]: http://ggplot2.org
+
+```{r}
+library("dplyr", warn.conflicts = FALSE)
+library("tidyr")
+library("ggplot2")
+```
+
+## General approach
+
+How would one best measure relative voter enthusiasm for Allan
+Kittleman vs. Courtney Watson? One measure would be how each candidate
+outperformed their “expected” vote on election day, for example, how
+many votes Kittleman attracted in a given precinct vs. the number of
+registered Republicans in that precinct, and ditto for Watson
+vis-a-vis the number of registered Democrats. A related measure would
+look at Republican turnout (i.e., as a percentage of registered
+Republicans) in a given precinct vs. Democratic turnout.
+
+In this document I confine myself to looking at simple margins of
+victory in each precinct. The Maryland State Board of Elections has
+made available precinct-level data (in Microsoft Excel format) giving
+party turnout in the 2014 general election. I’ll take a look at that
+data later.
+
+As I mentioned above, this analysis is for election day voting
+only. Absentee ballots and votes cast at early voting centers are not
+included in the per-precinct totals.
+
+## Loading the data
+
+First I download the CSV-format data containing Howard County 2014
+general election results, and store a copy of the data in the local
+file `Howard_By_Precinct_2014_General.csv`.
+
+```{r}
+download.file("http://elections.state.md.us/elections/2014/election_data/Howard_By_Precinct_2014_General.csv",
+              "Howard_By_Precinct_2014_General.csv",
+              method = "curl")
+```
+
+I then read in the CSV file for election results, and remove
+extraneous spaces from the names of the offices.
+
+```{r}
+hoco_g14_df <- read.csv("Howard_By_Precinct_2014_General.csv", stringsAsFactors = FALSE)
+hoco_g14_df$Office.Name <- gsub("  *$", "", hoco_g14_df$Office.Name)
+str(hoco_g14_df)
+```
+
+## Data processing
+
+I start by looking at the results for the County Executive race. I
+filter the rows based on `Office.Name` and select only the columns of
+interest.
+
+```{r}
+temp1_df <- hoco_g14_df %>%
+    filter(Office.Name == "County Executive") %>%
+    select(Election.District, Election.Precinct, Party, Election.Night.Votes)
+head(temp1_df)
+```
+
+The rows where the `Party` variable has the value ‘BOT’ correspond to
+votes for write-in candidates. I do a quick summarization to show that
+the number of write-in votes is pretty small:
+
+```{r}
+temp1_df %>% group_by(Party) %>% summarize(Votes = sum(Election.Night.Votes))
+```
+
+To simplify the analysis I filter out the write-in votes. I also
+combine the `Election.District` and `Election.Precinct` variables into
+a single variable `Precinct` having the form ‘0-00’, and then discard
+the original variables:
+
+```{r}
+temp2_df <- temp1_df %>%
+    filter(Party != "BOT") %>%
+    mutate(Precinct = paste(as.character(Election.District),
+                            "-",
+                            formatC(Election.Precinct, width = 2, flag = 0),
+                            sep = "")) %>%
+    select(-Election.District, -Election.Precinct)
+head(temp2_df)
+```
+
+The problem now is that I want to compute margins of victory, and to
+do that most easily I need to have both parties’ vote totals on the
+same row. Enter the `spread()` function from the tidyr package. It
+takes the values of the `Party` variables in different rows and
+converts them into multiple column variables named after the parties
+themselves. The values for the new variables are taken from the
+`Election.Night.Votes` variables in the original rows for the parties.
+
+```{r}
+temp3_df <- temp2_df %>%
+    spread(Party, Election.Night.Votes)
+head(temp3_df)
+```
+
+The final calculation is pretty simple: I just compute a `Rep.Margin`
+variable containing the absolute Republican margin of victory and a
+`Pct.Rep.Margin` variable containing the Republican margin of victory
+in percentage terms.
+
+```{r}
+ak_margins_df <- temp3_df %>%
+    mutate(Rep.Margin = REP - DEM,
+           Pct.Rep.Margin = round(100 * (REP - DEM) / (REP + DEM), 1))
+head(ak_margins_df)
+```
+
+## A histogram of precincts by victory margin
+
+Now I want to see how precincts varied in terms of the Republican
+margin of victory. The easiest way to do this is using a histogram; I
+first look at the percentage margins of victory:
+
+```{r}
+g <- ggplot(ak_margins_df, aes(x = Pct.Rep.Margin))
+g <- g + geom_histogram()
+print(g)
+```
+
+The x axis corresponds to Allan Kittleman’s different margins of
+victory in various precincts, and the height of the bars corresponds
+to the number of precincts for which Kittleman’s margins of victory
+were in a given range.
+
+To help better see this I change the width of the bars so they cover
+ranges of 10% (0-9%, 10-19%, and so on).
+
+```{r}
+g <- ggplot(ak_margins_df, aes(x = Pct.Rep.Margin))
+g <- g + geom_histogram(binwidth = 10)
+g <- g + xlab("Margin of Victory (Percentage)")
+g <- g + ylab("Number of Precincts")
+g <- g + ggtitle("Allan Kittleman Precinct-Level Margins of Victory (%)")
+print(g)
+```
+
+A couple of interesting points about this histogram: First, there were
+no precincts in which Courtney Watson ran 50 or more percentage points
+ahead of Allan Kittleman, and only 5 precincts in which her margin of
+victory was greater than 40%. On the other hand Kittleman had what
+looks like 12 precincts in which he ran more than 40% ahead of Watson.
+
+I confirm this by sorting and filtering the `ak_margins_df` data frame
+to show where Kittleman won by more than 40%:
+
+```{r}
+ak_margins_df %>%
+    arrange(desc(Pct.Rep.Margin)) %>%
+    filter(Pct.Rep.Margin >= 40.0)
+```
+
+and where he lost by more than 40%:
+
+```{r}
+ak_margins_df %>%
+    arrange(Pct.Rep.Margin) %>%
+    filter(Pct.Rep.Margin <= -40.0)
+```
+
+The other interesting thing in the histogram has to do with the
+precincts in which the results were relatively close (0-10% margin
+either way). It looks as if Allan Kittleman carried about twice as
+many of these swing precincts as Courtney Watson.
+
+For completeness I also show summary statistics for the percentage
+margins of victory:
+
+```{r}
+summary(ak_margins_df$Pct.Rep.Margin)
+```
+
+The maximum and minimum margins of victory are as listed above.  The
+median value of 4.15 means that on election day Allan Kittleman
+carried half of all precincts by a 4.15% or greater margin.
+
+Next I look at victory margins in terms of absolute numbers of votes
+as opposed to percentages.
+
+```{r}
+g <- ggplot(ak_margins_df, aes(x = Rep.Margin))
+g <- g + geom_histogram(binwidth = 100)
+g <- g + xlab("Margin of Victory (Votes)")
+g <- g + ylab("Number of Precincts")
+g <- g + ggtitle("Allan Kittleman Precinct-Level Margins of Victory (Votes)")
+print(g)
+```
+
+As with the other histogram this histogram is skewed to the right
+(both literally and figuratively). There were no precincts in which
+Courtney Watson’s election-day margin was more than 400 votes, but
+several where Allan Kittleman’s election day margin of victory was
+that large or larger.
+
+## Conclusion
+
+There are `r nrow(ak_margins_df)` precincts in Howard County.  In
+voting on election day Allan Kittleman won truly lopsided victories
+(40% or more winning margin) in about 10% of them, more than twice as
+many as Courtney Watson. This is consistent with a greater number of
+precincts that are overwhelmingly Republican (vs. Democratic), higher
+Republican turnout (vs. Democratic turnout), or a decided move to
+Kittleman on the part of swing voters. The evidence presented thus far
+isn’t sufficient to distinguish among these possibilities.
+
+In my next document I’ll present the same data as above, but in the
+form of a precinct map.
+
+## Appendix
+
+I used the following R environment in doing the analysis for this
+example:
+
+```{r sessionInfo}
+sessionInfo()
+```
+
+You can find the source code for this analysis and others at my
+[HoCoData repository on GitHub][hocodata]. This document and its
+source code are available for unrestricted use, distribution and
+modification under the terms of the Creative Commons [CC0 1.0
+Universal (CC0 1.0) Public Domain Dedication][CC0].  Stated more
+simply, you’re free to do whatever you‘d like with it.
+
+[hocodata]: https://github.com/frankhecker/hocodata
+[CC0]: https://creativecommons.org/publicdomain/zero/1.0/
