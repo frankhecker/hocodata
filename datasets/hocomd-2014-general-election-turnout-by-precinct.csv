@@ -1,0 +1,119 @@
+"Precinct","Polling.Place","Reg.Voters","Cards.Cast","Pct.Turnout"
+"001-001","St. Augustine School Gym",2051,976,47.59
+"001-002","Elkridge Landing Middle School Gym",524,255,48.66
+"001-003","Mayfield Woods Middle School Cafeteria",1803,765,42.43
+"001-004","Ilchester Elementary School Cafeteria",2738,1354,49.45
+"001-005","Worthington Elementary School Gym",664,293,44.13
+"001-006","Deep Run Elementary School Cafeteria",1805,649,35.96
+"001-007","Mayfield Woods Middle School Cafeteria",516,161,31.2
+"001-008","Elkridge Elementary School Cafeteria",1789,754,42.15
+"001-009","Mayfield Woods Middle School Gym",1558,648,41.59
+"001-010","Howard High School Auditorium Lobby",1407,536,38.1
+"001-011","Ilchester Elementary School Gym",768,366,47.66
+"001-012","Rockburn Elementary School Gym",819,359,43.83
+"001-013","Elkridge Elementary School Gym",1267,570,44.99
+"001-014","Rockburn Elementary School Gym",1639,822,50.15
+"001-015","Deep Run Elementary School Gym",2361,731,30.96
+"001-016","Elkridge Landing Middle School Gym",575,229,39.83
+"001-017","Elkridge Elementary School Cafeteria",634,218,34.38
+"001-018","Elkridge Landing Middle School Gym",371,149,40.16
+"001-019","Ilchester Elementary School Gym",64,31,48.44
+"001-020","Ilchester Elementary School Gym",577,266,46.1
+"001-021","Ducketts Lane Elementary School Cafeteria",1127,446,39.57
+"002-001","Park View at Ellicott City II Community Room",1971,713,36.17
+"002-002","Ellicott Mills Middle School Cafeteria",2829,1051,37.15
+"002-003","Ellicott Mills Middle School Gym",2690,1117,41.52
+"002-004","Howard High School Gym",1664,559,33.59
+"002-005","Centennial Lane Elementary School Cafeteria",1479,605,40.91
+"002-006","St. John's Lane Elementary School Cafeteria",1531,674,44.02
+"002-007","Mt. Hebron High School Cafeteria",1858,791,42.57
+"002-008","Hollifield Station Elementary School Cafeteria",2050,869,42.39
+"002-009","The Heartlands Cafeteria",2292,670,29.23
+"002-010","Centennial High School Cafeteria",1237,555,44.87
+"002-011","Waverly Elementary School Gym",2298,748,32.55
+"002-012","Ellicott City Senior Center Meeting Room",2384,828,34.73
+"002-013","Dunloggin Middle School Cafeteria",922,414,44.9
+"002-014","Dunloggin Middle School Cafeteria",1032,412,39.92
+"002-015","Centennial Lane Elementary School Gym",2153,797,37.02
+"002-016","Worthington Elementary School Cafeteria",2278,970,42.58
+"002-017","Burleigh Manor Middle School Cafeteria",525,178,33.9
+"002-018","Mt. Hebron High School Gym",2124,912,42.94
+"002-019","Waverly Elementary School Cafeteria",1600,704,44
+"002-020","Northfield Elementary School Cafeteria",947,356,37.59
+"002-021","Northfield Elementary School Cafeteria",327,157,48.01
+"002-022","Centennial High School Cafeteria",52,22,42.31
+"002-023","Hollifield Station Elementary School Gym",1293,377,29.16
+"002-024","Patapsco Middle School Gym",1358,576,42.42
+"002-025","Bonnie Branch Middle School Cafeteria",1408,572,40.63
+"002-026","Burleigh Manor Middle School Cafeteria",1673,643,38.43
+"003-001","West Friendship Elementary School Cafeteria",1740,771,44.31
+"003-002","Mt. View Middle School Cafeteria",2608,1235,47.35
+"003-003","Manor Woods Elementary School Cafeteria",2320,956,41.21
+"003-004","Burleigh Manor Middle School Cafeteria",297,90,30.3
+"003-005","Mt. View Middle School Gym",3605,1335,37.03
+"003-006","Folly Quarter Middle School Cafeteria",1864,895,48.02
+"004-001","Lisbon Volunteer Fire Department Hall",1377,726,52.72
+"004-002","Glenelg High School Cafeteria",1727,965,55.88
+"004-003","Lisbon Elementary School Cafeteria",1861,971,52.18
+"004-004","Lisbon Elementary School Gym",2206,1078,48.87
+"004-005","St. Michael's Catholic Church Multi-Purpose Room",1527,884,57.89
+"004-006","Glenwood Middle School Cafeteria",2093,1060,50.65
+"005-001","Clarksville Elementary School Cafeteria",2848,1224,42.98
+"005-002","Harper's Choice Middle School Gym",833,331,39.74
+"005-003","Vantage House Retirement Center Auditorium",2328,876,37.63
+"005-004","Wilde Lake High School Cafeteria",2255,796,35.3
+"005-005","Pointers Run Elementary School Cafeteria",2587,1109,42.87
+"005-006","Fulton Elementary School Cafeteria",3019,1357,44.95
+"005-007","Swansfield Elementary School Cafeteria",1607,632,39.33
+"005-008","Bryant Woods Elementary School Cafeteria",1836,659,35.89
+"005-009","Harper's Choice Middle School Cafeteria",1858,583,31.38
+"005-010","Clarksville Middle School Cafeteria",2774,1174,42.32
+"005-011","Schooley Mill Park Multi Purpose Room",1349,702,52.04
+"005-012","The Hawthorn Neighborhood Center Community Room",1753,717,40.9
+"005-013","Atholton High School Cafeteria",1047,460,43.94
+"005-014","Harper's Choice Middle School Gym",909,342,37.62
+"005-015","Clemens Crossing Elementary School Gym",2377,968,40.72
+"005-016","Running Brook Elementary School Cafeteria",1691,538,31.82
+"005-017","Harmony Hall Retirement Center Day Room",1635,708,43.3
+"005-018","Wilde Lake Middle School Gym",1285,366,28.48
+"005-019","Dayton Oaks Elementary School Cafeteria",2424,1215,50.12
+"005-020","Reservoir High School Cafeteria",1750,855,48.86
+"005-021","Swansfield Elementary School Gym",1998,656,32.83
+"005-022","Clarksville Middle School Gym",3198,1349,42.18
+"005-023","River Hill High School Cafeteria",1486,478,32.17
+"005-024","Schooley Mill Park Multi-Purpose Room",930,402,43.23
+"006-001","Forest Ridge Elementary School Gym",1460,582,39.86
+"006-002","Hope Baptist Church Meeting Room",2690,983,36.54
+"006-003","Hammond Middle School Gym",1230,641,52.11
+"006-004","Atholton Elementary School Cafeteria",2130,1143,53.66
+"006-005","Oakland Mills Middle School Cafeteria",1349,596,44.18
+"006-006","Thunder Hill Elementary School Cafeteria",1215,614,50.53
+"006-007","Ridgely's Run Community Center All Purpose Room",1408,378,26.85
+"006-008","Stevens Forest Elementary School Cafeteria",1322,537,40.62
+"006-009","Talbott Springs Elementary School Cafeteria",1726,724,41.95
+"006-010","Howard High School Cafeteria",1667,777,46.61
+"006-011","Jeffers Hill Elementary School Cafeteria",1726,726,42.06
+"006-012","Lake Elkhorn Middle School Cafeteria",740,327,44.19
+"006-013","Guilford Elementary School Cafeteria",1410,517,36.67
+"006-014","Phelps Luck Elementary School Cafeteria",1531,691,45.13
+"006-015","Laurel Woods Elementary School Gym",1682,641,38.11
+"006-016","Phelps Luck Elementary School Gym",2192,823,37.55
+"006-017","Owen Brown Place Meeting Room",2028,764,37.67
+"006-018","Hammond High School Cafeteria",1518,729,48.02
+"006-019","Guilford Elementary School Gym",2024,716,35.38
+"006-020","Patuxent Valley Middle School Cafeteria",1871,756,40.41
+"006-021","Long Reach High School Cafeteria",1174,412,35.09
+"006-022","Lake Elkhorn Middle School Cafeteria",1566,628,40.1
+"006-023","Hammond High School Cafeteria",837,400,47.79
+"006-024","Murray Hill Middle School Cafeteria",1721,609,35.39
+"006-025","Hammond Middle School Gym",793,398,50.19
+"006-026","Hammond High School Gym",2275,1042,45.8
+"006-027","Forest Ridge Elementary School Gym",1802,697,38.68
+"006-028","Lime Kiln Middle School Cafeteria",2639,1148,43.5
+"006-029","Long Reach High School Main Gym",3526,1351,38.32
+"006-030","Ridgely's Run Community Center All-Purpose Room",1119,300,26.81
+"006-031","Jeffers Hill Elementary School Gym",1305,543,41.61
+"006-032","Gorman Crossing Elementary School Gym",1646,702,42.65
+"006-033","Patuxent Valley Middle School Gym",1771,648,36.59
+"006-034","Laurel Woods Elementary School Cafeteria",1638,566,34.55
+"006-035","Murray Hill Middle School Gym",2675,1099,41.08
