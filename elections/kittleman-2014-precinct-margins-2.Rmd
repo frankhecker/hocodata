@@ -2,7 +2,7 @@
 title: "Allan Kittleman’s Election-Day Victory Margins in the Howard
 County 2014 General Election, Part 2"
 author: "Frank Hecker"
-date: "February 27, 2015"
+date: "February 28, 2015"
 output: html_document
 ---
 
@@ -22,9 +22,9 @@ unaffiliated voters.
 
 I present the data as a map of Howard County with the precincts
 colored according to Kittleman’s absolute and relative margins of
-victory. (The map is based on precinct boundaries made available by
-the Howard County GIS division on the [data.howardcountymd.gov][]
-site.)
+victory, and with county council boundaries added. The map is based on
+precinct and council boundaries made available by the Howard County
+GIS division on the [data.howardcountymd.gov][] site.
 
 [data.howardcountymd.gov]: http://data.howardcountymd.gov/
 
@@ -133,7 +133,7 @@ precincts_spdf <- readOGR("precincts.json", "OGRGeoJSON")
 districts_spdf <- readOGR("districts.json", "OGRGeoJSON")
 ```
 
-Recall that `readOGR()` function returns a special type of data
+Recall that the `readOGR()` function returns a special type of data
 structure, a “SpatialPolygonsDataFrame” containing both a regular data
 frame and a list of polygons containing map data for the precincts.
 
@@ -183,7 +183,7 @@ ak_margins_df %>% arrange(desc(REP.Margin)) %>% head(5)
 ```
 
 and the five precincts in which Courtney Watson received her highest
-margins on election day:
+margins on election day in terms of absolute votes:
 
 ```{r}
 ak_margins_df %>% arrange(REP.Margin) %>% head(5)
@@ -205,7 +205,7 @@ percentage margins of victory.
 
 ## Creating precinct-level maps
 
-Now comes the fun part: actually mapping the data.  First I convert to
+Now comes the fun part: actually mapping the data.  First I convert
 the precincts and council district map data to normal data frames
 usable with the `ggplot()` function.
 
@@ -271,7 +271,7 @@ g <- ggplot() +
                  colour = "white") +
     geom_text(data = district_centers_df,
               aes(x = long, y = lat, label = District),
-              size = 7,
+              size = 5,
               colour = "white",
               show_guide = FALSE) +
     coord_equal() +
@@ -287,7 +287,7 @@ print(g)
 ```
 
 The second plot shows Allan Kittleman’s victory margins in terms of
-percentage of votes in each precinct. This graph is produced almost
+percentage of votes in each precinct. This graph is produced
 identically to the previous one, except that I use the
 `Pct.REP.Margin` variable to color the precincts (instead of
 `REP.Margin`) and I set the maximum red color to be used for a 70%
@@ -304,7 +304,7 @@ g <- ggplot() +
                  colour = "white") +
     geom_text(data = district_centers_df,
               aes(x = long, y = lat, label = District),
-              size = 7,
+              size = 5,
               colour = "white",
               show_guide = FALSE) +
     coord_equal() +
