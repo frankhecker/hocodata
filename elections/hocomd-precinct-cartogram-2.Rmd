@@ -1,0 +1,235 @@
+---
+title: "Creating Howard County Precinct Cartograms Based on 2014 Registered
+Voters, Part 2"
+author: "Frank Hecker"
+date: "March 1, 2015"
+output: html_document
+---
+
+## Introduction
+
+In doing analyses of precinct-level voting data from the Howard County
+2014 general election (using data from the [Maryland State Board of
+Elections][MSBoE] and the [Howard County Board of Elections][HCBoE]),
+one problem is that maps drawn using that data are inherently
+misleading: Precincts in western Howard County are much larger than
+precincts in Columbia and eastern Howard County, so they visually
+dominate the maps.
+
+[MSBoE]: http://elections.state.md.us/elections/2014/election_data/index.html
+[HCBoE]: http://www.howardcountymd.gov/Departments.aspx?id=4294968268
+
+One way to reduce this effect is to create [cartograms][], maps in
+which the visual sizes of the geographic subdivisions are based not on
+their actual geographic area but on some other variable associated
+with them. In particular, for political maps of Howard County I would
+like to display precincts sized according to the number of registered
+voters in each precinct.
+
+[cartograms]: http://en.wikipedia.org/wiki/Cartogram
+
+Creating a voter-based cartogram of Howard County precincts requires
+distorting the precinct boundaries so as to change the area of each
+precinct while still preserving the overall shape of the precinct as
+much as possible, and also preserving its relationship to its
+neighboring precincts. This requires some relatively sophisticated
+mathematics, and unfortunately there is no existing R package that can
+do it well. Instead I use [scapetoad][], a Java-based application
+available for Microsoft Windows, Mac OS X, and Linux.
+
+[scapetoad]: http://scapetoad.choros.ch
+
+In a previous document (part 1) I described the overall process of
+preparing Howard County map data for use with the scapetoad
+application. In this document I describe the process of running the
+scapetoad application to produce the desired cartogram(s) and checking
+the results.
+
+## Loading libraries
+
+I use the [R statistical package][] run from the [RStudio][]
+development environment, along with the [sp][] and [rgdal][] packages
+to read mapping data.
+
+[R statistical package]: http://r-project.org
+[RStudio]: http://www.rstudio.com/products/rstudio
+[sp]: http://cran.r-project.org/web/packages/sp/index.html
+[rgdal]: http://cran.r-project.org/web/packages/rgdal/index.html
+
+```{r}
+library("sp")
+library("rgdal")
+```
+
+The rgdal package also requires installing the GDAL mapping library on
+the underlying operating system.
+
+## General approach
+
+The scapetoad application works only with map data in ESRI shapefile
+format, and requires that the variable used to determine precinct
+sizes be included with that data. The scapetoad application also has a
+handy feature whereby you can include other map layers and distort
+them in tandem with the original map. I use this to create maps of the
+Howard County council districts, Maryland state legislative districts,
+and US Congressional districts that match the precinct cartogram.
+
+## Running the scapetoad utility
+
+In the previous document (part 1) I downloaded the shapefile for the
+boundaries of Howard County precincts and created a new shapefile
+`Precinct_VotersPolygon.shp` that has an added field `Reg.Voters`
+specifying the number of registered voters in each precinct as of the
+2014 general election. This is the shapefile I use to create the main
+cartogram.
+
+I also downloaded shapefiles for the boundaries of Howard County
+council districts and for the Howard County portions of Maryland state
+legislative districts and US congressional districts. I use these
+shapefiles to create additional cartograms.
+
+I then invoke the scapetoad application and use the “Add a Layer”
+function multiple times to add invidual layers for the following
+shapefiles:
+
+* `Precinct_VotersPolygon.shp`
+* `Council_DistrictsPolygon.shp`
+* `Legislative_DistrictsPolygon.shp`
+* `Congressional_DistrictsPolygon.shp`
+
+I next use the ‘Create Cartogram’ function to create the various
+cartograms. I do the following steps in the resulting wizard:
+
+* Click the ‘Next’ button to get past the first screen.
+* Select ‘Precinct_VotersPolygon’ for spatial coverage (the main layer
+  to be transformed), then click the ‘Next’ button.
+* Select ‘Reg_Voters’ for the cartogram attribute (the metric unit of
+  the new space). (Note that the scapetoad application changes the
+  field name from the original ‘Reg.Voters’.) Then click the ‘Next’
+  button.
+* Click the ‘Layers to transform...’ button and select all three
+  layers presented: ‘Congressional_DistrictsPolygon’,
+  ‘Legislative_DistrictsPolygon’, and ‘Council_DistrictsPolygon’.
+  These layers will be transformed based on the transformations
+  applied to the main layer (‘Precinct_VotersPolygon’). Then click
+  the ‘Next’ button.
+* Move the slider to select ‘High’ quality, then click the ‘Compute’
+  button. Wait for the transformation process to complete; it takes
+  several minutes. Then click the ‘Done’ button.
+
+Finally I use the ‘Export to shape’ function multiple times to export
+each of the transformed layers to a shapefile:
+
+* Select layer ‘Precinct_VotersPolygon (2)’, the transformed layer for
+  the precinct boundaries. (‘Precinct_VotersPolygon’ is the original
+  untransformed layer.) Click on the ‘OK’ button and save the layer as
+  ‘Voting_Precincts_CartogramPolygon’.
+* Select layer ‘Council_DistrictsPolygon (2)’ and save it as
+  ‘Council_Districts_CartogramPolygon’.
+* Select layer ‘Legislative_DistrictsPolygon (2)’ and save it as
+  ‘Legislative_Districts_CartogramPolygon’.
+* Select layer ‘Congressional_DistrictsPolygon (2)’ and save it as
+  ‘Congressional_Districts_CartogramPolygon’.
+
+Each export operation produces three files, with suffixes `.dbx`,
+`.shp`, and `.shx`.
+
+At this point I am finished running the scapetoad application.
+
+## Checking the resulting cartograms
+
+I now check the newly-created cartograms against the original maps. I
+read in the shapefile data for the cartograms for the precincts,
+county council districts, Maryland state legislative districts, and US
+Congressional districts, along with the shapefiles for the original
+maps as downloaded from `data.howardcountymd.gov`.
+
+```{r}
+precinct_cg <- readOGR(dsn = ".",
+                       layer = "Voting_Precincts_CartogramPolygon")
+precinct_map <- readOGR(dsn = ".",
+                        layer = "Voting_PrecinctsPolygon")
+council_cg <- readOGR(dsn = ".",
+                      layer = "Council_Districts_CartogramPolygon")
+council_map <- readOGR(dsn = ".",
+                       layer = "Council_DistrictsPolygon")
+leg_cg <- readOGR(dsn = ".",
+                  layer = "Legislative_Districts_CartogramPolygon")
+leg_map <- readOGR(dsn = ".",
+                   layer = "Legislative_DistrictsPolygon")
+cong_cg <- readOGR(dsn = ".",
+                   layer = "Congressional_Districts_CartogramPolygon")
+cong_map <- readOGR(dsn = ".",
+                    layer = "Congressional_DistrictsPolygon")
+```
+
+Then I check the fields in the precinct cartogram vs. the fields in
+the original map:
+
+```{r}
+str(precinct_map@data)
+str(precinct_cg@data)
+```
+
+Note the added `Reg_Voters` field from the turnout statistics. (The
+other two fields `Reg_Voters_D` and `SizeError` are created by the
+scapetoad application.)
+
+Now I do quick plots of the original maps and the cartograms. I use
+the base `plot()` function in R to avoid the need to create dataframes
+for the `ggplot()` function.
+
+```{r}
+plot(precinct_map)
+plot(precinct_cg)
+plot(council_map)
+plot(council_cg)
+plot(leg_map)
+plot(leg_cg)
+plot(cong_map)
+plot(cong_cg)
+```
+
+As a final step I create new `.zip` files from the shapefiles created
+by the scapetoad application.
+
+```{r}
+files <- c("Voting_Precincts",
+           "Council_Districts",
+           "Legislative_Districts",
+           "Congressional_Districts")
+suffixes <- c(".dbf", ".shp", ".shx")
+for (file in files) {
+        zip_file <- paste(file, "_Cartogram.zip", sep = "")
+        map_files <- paste(file, "_CartogramPolygon", suffixes, sep = "")
+        if (file.exists(zip_file)) file.remove(zip_file)
+        zip(zip_file, map_files)
+}
+```
+
+I can now use these `.zip` files in place of the original shapefile
+`.zip` files downloaded from `data.howardcountymd.gov`.
+
+## Appendix
+
+I used the following R environment in doing the analysis for this
+example:
+
+```{r sessionInfo}
+sessionInfo()
+```
+
+The underlying GDAL library for the rgdal packages is from the
+KyngChaos [GDAL Complete][] distribution version 1.11 for Mac OS X.
+
+[GDAL Complete]: http://www.kyngchaos.com/software/frameworks#gdal_complete
+
+You can find the source code for this analysis and others at my
+[HoCoData repository on GitHub][hocodata]. This document and its
+source code are available for unrestricted use, distribution and
+modification under the terms of the Creative Commons [CC0 1.0
+Universal (CC0 1.0) Public Domain Dedication][CC0].  Stated more
+simply, you’re free to do whatever you’d like with it.
+
+[hocodata]: https://github.com/frankhecker/hocodata
+[CC0]: https://creativecommons.org/publicdomain/zero/1.0/

@@ -1,0 +1,209 @@
+---
+title: "Creating Howard County Precinct Cartograms Based on 2014 Registered
+Voters, Part 1"
+author: "Frank Hecker"
+date: "March 1, 2015"
+output: html_document
+---
+
+## Introduction
+
+In doing analyses of precinct-level voting data from the Howard County
+2014 general election (using data from the [Maryland State Board of
+Elections][MSBoE] and the [Howard County Board of Elections][HCBoE]),
+one problem is that maps drawn using that data are inherently
+misleading: Precincts in western Howard County are much larger than
+precincts in Columbia and eastern Howard County, so they visually
+dominate the maps.
+
+[MSBoE]: http://elections.state.md.us/elections/2014/election_data/index.html
+[HCBoE]: http://www.howardcountymd.gov/Departments.aspx?id=4294968268
+
+One way to reduce this effect is to create [cartograms][], maps in
+which the visual sizes of the geographic subdivisions are based not on
+their actual geographic area but on some other variable associated
+with them. In particular, for political maps of Howard County I would
+like display precincts sized according to the number of registered
+voters in each precinct.
+
+[cartograms]: http://en.wikipedia.org/wiki/Cartogram
+
+Creating a voter-based cartogram of Howard County precincts requires
+distorting the precinct boundaries so as to change the area of each
+precincts while still preserving the overall shape of the precinct as
+much as possible, and also preserving its relationship to its
+neighboring precincts. This requires some relatively sophisticated
+mathematics, and unfortunately there is no existing R package that can
+do it well. Instead I use [scapetoad][], a Java-based application
+available for Microsoft Windows, Mac OS X, and Linux.
+
+[scapetoad]: http://scapetoad.choros.ch
+
+In this document I describe the overall process of preparing Howard
+County map data for use with the scapetoad application. In the next
+document (part 2) I describe running scapetoad to produce the desired
+cartograms.
+
+## Load packages
+
+I use the [R statistical package][] run from the [RStudio][]
+development environment, along with the [dplyr][] package to do data
+manipulation and the [sp][] and [rgdal][] packages to read and write
+mapping data.
+
+[R statistical package]: http://r-project.org
+[RStudio]: http://www.rstudio.com/products/rstudio
+[dplyr]: http://cran.rstudio.com/web/packages/dplyr/vignettes/introduction.html
+[sp]: http://cran.r-project.org/web/packages/sp/index.html
+[rgdal]: http://cran.r-project.org/web/packages/rgdal/index.html
+
+```{r}
+library("dplyr", warn.conflicts = FALSE)
+library("sp")
+library("rgdal")
+```
+
+The rgdal package also requires installing the GDAL mapping library on
+the underlying operating system.
+
+## General approach
+
+The scapetoad utility works only with map data in ESRI shapefile
+format, and requires that the variable used to determine precinct
+sizes be included with that data. The scapetoad utility also has a
+handy feature whereby you can include other map layers and distort
+them in tandem with the original map. I use this to create maps of the
+Howard County council districts, Maryland state legislative districts,
+and US Congressional districts that match the precinct cartogram.
+
+## Downloading data
+
+First I download a CSV-format dataset containing Howard County 2014
+general election turnout statistics by precincts. This dataset
+contains the number of registered voters per precinct on election
+day. I store a copy of the data in the local file
+`hocomd-2014-general-election-turnout-by-precinct.csv`.
+
+```{r}
+download.file("https://raw.githubusercontent.com/frankhecker/hocodata/master/datasets/hocomd-2014-general-election-turnout-by-precinct.csv",
+              "hocomd-2014-general-election-turnout-by-precinct.csv",
+              method = "curl")
+```
+
+Then I download spatial data from [`data.howardcountymd.gov`][]
+specifying the boundaries of Howard County election precincts, county
+council districts, Maryland state legislative districts, and US
+Congressional districts. I choose to use the ESRI shapefile format,
+and store the data locally in the files `Voting_Precincts.zip`,
+`Council_Districts.zip`.  `Congresional_Districts.zip`.
+
+[`data.howardcountymd.gov`]: http://data.howardcountymd.gov
+
+(Notes: The council district map uses the new council boundaries in
+effect for the 2014 primary and general elections. The
+`data.howardcountymd.gov` site mistakenly lists these boundaries as
+not taking effect until December 2014. Also, strictly speaking the
+“legislative districts” map shows the House of Delegates districts. A
+Maryland State Senate district may be composed of multiple House of
+Delegates districts; thus, for example, State Senate district 9 is the
+combination of House of Delegates districts 9A and 9B.)
+
+```{r}
+download.file("https://data.howardcountymd.gov/geoserver/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=general:Voting_Precincts&outputFormat=shape-zip",
+              "Voting_Precincts.zip",
+              method = "curl")
+download.file("https://data.howardcountymd.gov/geoserver/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=general:Council_Districts&outputFormat=shape-zip",
+              "Council_Districts.zip",
+              method = "curl")
+download.file("https://data.howardcountymd.gov/geoserver/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=general:Legislative_Districts&outputFormat=shape-zip",
+              "Legislative_Districts.zip",
+              method = "curl")
+download.file("https://data.howardcountymd.gov/geoserver/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=general:Congressional_Districts&outputFormat=shape-zip",
+              "Congressional_Districts.zip",
+              method = "curl")
+```
+
+The shapefile data is downloaded in the form of compressed `.zip`
+files, so I then unzip the data into the current directory. Each
+`.zip` file produces five separate files when uncompressed, with
+suffixes `.cst`, `.dbf`, `.prj`, `.shp`, and `.shx`. (They also
+produce a sixth file `wfsrequest.txt` that we can ignore.)
+
+```{r}
+unzip("Voting_Precincts.zip", overwrite = TRUE)
+unzip("Council_Districts.zip", overwrite = TRUE)
+unzip("Legislative_Districts.zip", overwrite = TRUE)
+unzip("Congressional_Districts.zip", overwrite = TRUE)
+```
+
+## Reading the data
+
+First I read in the turnout data.
+
+```{r}
+turnout_df <- read.csv("hocomd-2014-general-election-turnout-by-precinct.csv",
+                       stringsAsFactors = FALSE)
+str(turnout_df)
+```
+
+Then I read in the shapefile data for the precinct boundaries.
+
+```{r}
+precinct_map <- readOGR(dsn = ".",
+                         layer = "Voting_PrecinctsPolygon")
+str(precinct_map@data)
+```
+
+Now I have to merge the registered voter data in `turnout_df` with the
+map data in `precinct_map`. Among other things, this requires
+converting the precinct designators to a common format (in this case
+‘0-00’, e.g., ‘6-35’).
+
+```{r}
+voters_df <- turnout_df %>%
+    mutate(PRECINCT20 = gsub("^00([0-9])-0([0-9][0-9])$", "\\1-\\2", Precinct)) %>%
+    select(PRECINCT20, Reg.Voters)
+str(voters_df)
+precinct_map@data <- precinct_map@data %>%
+    left_join(voters_df, by = "PRECINCT20")
+str(precinct_map@data)
+```
+
+Finally I write out a new shapefile for use as input to the scapetoad
+utility.
+
+```{r}
+writeOGR(precinct_map,
+         dsn = ".",
+         layer = "Precinct_VotersPolygon",
+         driver = "ESRI Shapefile",
+         overwrite_layer = TRUE)
+```
+
+At this point there is nothing further to be done in R. The next
+document (part 2) describes the process of running the scapetoad
+application.
+
+## Appendix
+
+I used the following R environment in doing the analysis for this
+example:
+
+```{r sessionInfo}
+sessionInfo()
+```
+
+The underlying GDAL library for the rgdal packages is from the
+KyngChaos [GDAL Complete][] distribution version 1.11 for Mac OS X.
+
+[GDAL Complete]: http://www.kyngchaos.com/software/frameworks#gdal_complete
+
+You can find the source code for this analysis and others at my
+[HoCoData repository on GitHub][hocodata]. This document and its
+source code are available for unrestricted use, distribution and
+modification under the terms of the Creative Commons [CC0 1.0
+Universal (CC0 1.0) Public Domain Dedication][CC0].  Stated more
+simply, you’re free to do whatever you’d like with it.
+
+[hocodata]: https://github.com/frankhecker/hocodata
+[CC0]: https://creativecommons.org/publicdomain/zero/1.0/
