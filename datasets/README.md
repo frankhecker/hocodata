@@ -50,9 +50,9 @@ Maryland:
 [`hocomd-2014-general-election-turnout.csv`]: https://raw.githubusercontent.com/frankhecker/hocodata/master/datasets/hocomd-2014-general-election-turnout-by-precinct.csv
 [2014 general election results]: http://www.howardcountymd.gov/WorkArea/linkit.aspx?LinkIdentifier=id&ItemID=6442477038&libID=6442477030
 [Howard County Board of Elections]: http://www.howardcountymd.gov/Departments.aspx?id=4294968268
-[`Voting_Precincts_Cartogram.zip`][]: https://github.com/frankhecker/hocodata/raw/master/datasets/Voting_Precincts_Cartogram.zip
+[`Voting_Precincts_Cartogram.zip`]: https://github.com/frankhecker/hocodata/raw/master/datasets/Voting_Precincts_Cartogram.zip
 [cg1]: http://rpubs.com/frankhecker/63528
 [cg2]: http://rpubs.com/frankhecker/63529
-[`Council_Districts_Cartogram.zip`][]: https://github.com/frankhecker/hocodata/raw/master/datasets/Council_Districts_Cartogram.zip
-[`Legislative_Districts_Cartogram.zip`][]: https://github.com/frankhecker/hocodata/raw/master/datasets/Legislative_Districts_Cartogram.zip
+[`Council_Districts_Cartogram.zip`]: https://github.com/frankhecker/hocodata/raw/master/datasets/Council_Districts_Cartogram.zip
+[`Legislative_Districts_Cartogram.zip`]: https://github.com/frankhecker/hocodata/raw/master/datasets/Legislative_Districts_Cartogram.zip
 [`Congressional_Districts_Cartogram.zip`]: https://github.com/frankhecker/hocodata/raw/master/datasets/Congressional_Districts_Cartogram.zip
