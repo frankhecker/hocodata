@@ -1,0 +1,397 @@
+---
+title: "Allan Kittleman’s Election-Day Victory Margins in the Howard
+County 2014 General Election, Part 3"
+author: "Frank Hecker"
+date: "March 1, 2015"
+output: html_document
+---
+
+## Introduction
+
+_This is part 3 in a series. See also [part 1][km1] and [part
+2][km2]._
+
+[km1]: http://rpubs.com/frankhecker/60538
+[km2]: http://rpubs.com/frankhecker/63458
+
+In this analysis I use precinct-level results from the Howard County
+2014 general election (courtesy of the [Maryland State Board of
+Elections][MSBoE]) to look at Allan Kittleman’s margin of victory
+across the county on election day in the race for Howard County
+Executive.  I’m interested in the general question of whether there
+was an “enthusiasm gap” in which Kittleman’s election-day results were
+particularly lopsided, e.g., due to increased turnout of Republican
+voters or unusually high support for Kittleman from Democrats and
+unaffiliated voters.
+
+[MSBoE]: http://elections.state.md.us/elections/2014/election_data/index.html
+
+I present the data as a map of Howard County with the precincts
+colored according to Kittleman’s absolute and relative margins of
+victory, and with county council boundaries added. The map is based on
+precinct and council boundaries made available by the Howard County
+GIS division on the [data.howardcountymd.gov][] site.
+
+[data.howardcountymd.gov]: http://data.howardcountymd.gov/
+
+Unlike my previous analysis in part 2 of this series, here the map is
+deliberately distorted to have the area covered by each precinct be
+proportional to the number of registered voters in that precinct. For
+more information on the process used to create such a map (referred to
+as a “[cartogram][]”) see “Creating Howard County Precinct Cartograms
+Based on 2014 Registered Voters”, [part 1][cg1] and [part 2][cg2].
+
+[cartogram]: http://en.wikipedia.org/wiki/Cartogram
+[cg1]: http://rpubs.com/frankhecker/63528
+[cg2]: http://rpubs.com/frankhecker/63529
+
+## Load packages
+
+For this analysis I use the [R statistical package][] run from the
+[RStudio][] development environment, along with the [dplyr][] and
+[tidyr][] packages to do data manipulation and the [ggplot2][] package
+to draw the maps.
+
+[R statistical package]: http://r-project.org
+[RStudio]: http://www.rstudio.com/products/rstudio
+[dplyr]: http://cran.rstudio.com/web/packages/dplyr/vignettes/introduction.html
+[tidyr]: http://blog.rstudio.org/2014/07/22/introducing-tidyr/
+[ggplot2]: http://ggplot2.org
+
+```{r}
+library("dplyr", warn.conflicts = FALSE)
+library("tidyr")
+library("ggplot2")
+```
+
+I also need to load R packages used to manipulate spatial data in R. I
+first load the [sp][] package, a prerequisite for using other spatial
+data packages. I use the [rgdal][] package to load spatial data for
+boundaries for the precincts and council districts.
+
+[sp]: http://cran.r-project.org/web/packages/sp/index.html
+[rgdal]: http://cran.r-project.org/web/packages/rgdal/index.html
+
+```{r}
+library("sp")
+library("rgdal")
+```
+
+The rgdal package also requires installing the GDAL mapping library on
+the underlying operating system.
+
+## General approach
+
+How would one best measure relative voter enthusiasm for Allan
+Kittleman vs. Courtney Watson? One measure would be how each candidate
+outperformed their “expected” vote, for example, how many votes
+Kittleman attracted in a given precinct vs. the number of registered
+Republicans in that precinct, and ditto for Watson vis-a-vis the
+number of registered Democrats. A related measure would look at
+Republican turnout (i.e., as a percentage of registered Republicans)
+in a given precinct vs. Democratic turnout.
+
+In this document I confine myself to looking at simple margins of
+victory in each precinct. The Maryland State Board of Elections has
+now made available [turnout data][] (in Microsoft Excel format) giving
+turnout by party by precinct in the 2014 general election.  I’ll take
+a look at that data in a later analysis.
+
+[turnout data]: http://www.elections.state.md.us/elections/2014/turnout/general/GG14_Turnout_by_party_by_precinct.xlsx
+
+As I mentioned above, this analysis is for election day voting
+only. Absentee ballots and votes cast at early voting centers are
+_not_ included in the per-precinct totals as reported by the Maryland
+State Board of Elections. I’m not aware of any good method to assign
+absentee and early voting results to individual precincts.
+
+## Loading the data
+
+First I download the CSV-format data file from the Maryland State
+Board of Elections containing Howard County 2014 general election
+results by precincts, and store a copy of the data in the local file
+`Howard_By_Precinct_2014_General.csv`.
+
+```{r}
+download.file("http://elections.state.md.us/elections/2014/election_data/Howard_By_Precinct_2014_General.csv",
+              "Howard_By_Precinct_2014_General.csv",
+              method = "curl")
+```
+
+Then I download spatial data specifying the boundaries of Howard
+County election precincts and county council districts, using the new
+council boundaries in effect for the 2014 primary and general
+elections. The boundaries are deliberately distorted to have the size
+of each precinct match the number of registered voters in each
+precinct as of the 2014 general election. The boundaries of the
+council districts are similarly distorted to match the transformed
+precinct boundaries. (These maps are available in the [datasets][]
+section of my [hocodata][] GitHub repository.)
+
+[datasets]: https://github.com/frankhecker/hocodata/tree/master/datasets
+[hocodata]: https://github.com/frankhecker/hocodata
+
+```{r}
+download.file("https://raw.githubusercontent.com/frankhecker/hocodata/master/datasets/Voting_Precincts_Cartogram.zip",
+              "Voting_Precincts_Cartogram.zip",
+              method = "curl")
+download.file("https://raw.githubusercontent.com/frankhecker/hocodata/master/datasets/Council_Districts_Cartogram.zip",
+              "Council_Districts_Cartogram.zip",
+              method = "curl")
+```
+
+Since the boundary data is in `.zip` files I need to unzip the files
+to extract the actual shapefiles.
+
+```{r}
+unzip("Voting_Precincts_Cartogram.zip", overwrite = TRUE)
+unzip("Council_Districts_Cartogram.zip", overwrite = TRUE)
+```
+
+I then read in the CSV file for election results. I remove extraneous
+spaces from the names of the offices to make it easier to filter the
+results by office.
+
+```{r}
+hoco_ge14_df <- read.csv("Howard_By_Precinct_2014_General.csv", stringsAsFactors = FALSE)
+hoco_ge14_df$Office.Name <- gsub("  *$", "", hoco_ge14_df$Office.Name)
+```
+
+Finally I read in the precinct and council district boundary
+shapefile data.
+
+```{r}
+precinct_map <- readOGR(dsn = ".",
+                        layer = "Voting_Precincts_CartogramPolygon")
+council_map <- readOGR(dsn = ".",
+                       layer = "Council_Districts_CartogramPolygon")
+```
+
+I add a new `Precinct` field to the precinct map data to match the
+000-000 format of the precinct designators I’ll be using in the data
+frame showing Kittleman’s victory margins.
+
+```{r}
+precinct_map@data <- precinct_map@data %>%
+    mutate(Precinct = gsub("^([0-9]+)-([0-9]+)$", "00\\1-0\\2", PRECINCT20))
+```
+
+## Data processing
+
+The processing of the data is almost identical to that done for part
+2. (The only change is to the precinct designator format.) For brevity
+I again consolidate everything into a single data processing
+pipeline. The operations in the pipeline are as follows:
+
+* Filter the rows based on `Office.Name` to get the results of the
+  County Executive race.
+* Select only the columns of interest.
+* Filter out write-in votes.
+* Combine the `Election.District` and `Election.Precinct` variables
+  into a single variable `Precinct` having the format ‘000-000’
+  (e.g., ‘006-035’).
+* Take the values of the `Party` variable in different rows and
+  convert them into column variables `REP` and `DEM`, taking the
+  values from the `Election.Night.Votes` variable.
+* Compute a `REP.Margin` variable containing the absolute Republican
+  margin of victory and a `Pct.REP.Margin` variable containing the
+  Republican margin of victory in percentage terms (rounded to one
+  digit past the decimal place).
+
+```{r}
+ak_margins_df <- hoco_ge14_df %>%
+    filter(Office.Name == "County Executive") %>%
+    select(Election.District, Election.Precinct, Party, Election.Night.Votes) %>%
+    filter(Party != "BOT") %>%
+    mutate(Precinct = paste(formatC(Election.District, width = 3, flag = 0),
+                            "-",
+                            formatC(Election.Precinct, width = 3, flag = 0),
+                            sep = "")) %>%
+    select(-Election.District, -Election.Precinct) %>%
+    spread(Party, Election.Night.Votes) %>%
+    mutate(REP.Margin = REP - DEM,
+           Pct.REP.Margin = round(100 * (REP - DEM) / (REP + DEM), 1))
+```
+
+I print summary statistics for the entire data set:
+
+```{r}
+summary(ak_margins_df)
+```
+
+Among other things this gives ranges for Kittleman’s margins in terms
+of votes (`r min(ak_margins_df$REP.Margin)` to
+`r max(ak_margins_df$REP.Margin)`) and percentages
+(`r min(ak_margins_df$Pct.REP.Margin)`% to
+`r max(ak_margins_df$Pct.REP.Margin)`%). I use these later when
+assigning colors to the precincts based on Kittleman’s absolute or
+percentage margins of victory.
+
+## Creating precinct-level maps
+
+Now comes the fun part: actually mapping the data.  First I convert
+the cartogram map data to normal data frames usable with the
+`ggplot()` function.
+
+```{r}
+precinct_map@data$id <- rownames(precinct_map@data)
+precinct_points <- fortify(precinct_map, region = "id")
+precinct_df <- full_join(precinct_points, precinct_map@data, by = "id")
+council_map@data$id <- rownames(council_map@data)
+council_points <- fortify(council_map, region = "id")
+council_df <- full_join(council_points, council_map@data, by = "id")
+```
+
+Then I add the margins data to the precinct map data.
+
+```{r}
+precinct_df <- precinct_df %>%
+    left_join(ak_margins_df, by = "Precinct")
+```
+
+Since I want to label the county council districts I next compute the
+centroids of the districts in order to position the labels on the map.
+
+```{r}
+council_centers = coordinates(council_map)
+council_centers_df <- as.data.frame(council_centers)
+names(council_centers_df) <- c("long", "lat")
+council_centers_df$District = as.character(council_map@data$DISTRICT20)
+```
+
+The cartogram’s shapes for districts 1 and 5 are so distorted that the
+centroids are almost outside the district boundaries. I therefore
+tweak the locations for the labels for those districts so that they’ll
+appear in more suitable locations, moving the label for district 1 a
+bit north and the label for district 5 a bit west.
+
+```{r}
+council_centers_df$lat[1] <- council_centers_df$lat[1] + 9000
+council_centers_df$long[5] <- council_centers_df$long[5] - 9000
+```
+
+Next I plot Allan Kittleman’s victory margins by precinct, starting
+with the absolute margins in votes. This plot contains three layers:
+
+* Polygons for the precincts, with a fill color set for each polygon
+  according to Kittleman’s victory margin in that precinct, using the
+  conventional color scale of red for Republican-leaning precincts and
+  blue for Democratic-leaning precincts.
+* Polygons for the county council districts, outlined in white with no
+  fill color set (i.e., to make the polygons transparent).
+* Text labels for the county council districts.
+
+I also tweak the plot as follows:
+
+* Kittleman’s maximum victory margin
+  (`r max(ak_margins_df$REP.Margin)` votes) is significantly higher
+  than Courtney Watson’s maximum victory margin
+  (`r abs(min(ak_margins_df$REP.Margin))` votes). I therefore set the
+  coloring to have maximum red at a 700 vote margin and maximum blue
+  at -700. This treats the two candidates’ margins equally in terms of
+  the coloring.
+* I set the x and y coordinate scales to be equal to avoid having the
+  map be distorted horizontally or vertically.
+* I remove all text and tick marks on the x and y axes, as well as
+  the normal grid lines and gray background.
+* I add a (two-line) title for the graph.
+
+```{r fig.width = 9}
+g <- ggplot() +
+    geom_polygon(data = precinct_df,
+                 aes(x = long, y = lat, group = group, fill = REP.Margin)) +
+    geom_polygon(data = council_df,
+                 aes(x = long, y = lat, group = group),
+                 fill = NA,
+                 colour = "white") +
+    geom_text(data = council_centers_df,
+              aes(x = long, y = lat, label = District),
+              size = 7,
+              colour = "white",
+              show_guide = FALSE) +
+    coord_equal() +
+    scale_fill_gradient("Margin (Votes)",
+                        limits = c(-700, 700),
+                        low = "blue",
+                        high = "red",
+                        space = "Lab",
+                        guide = "colourbar") +
+    theme(axis.title = element_blank(),
+          axis.text = element_blank(),
+          axis.ticks = element_blank(),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.background = element_blank()) +
+    ggtitle("Allan Kittleman 2014 Margins by Precinct (Votes)\nPrecinct Sizes Based on Registered Voters on Election Day")
+print(g)
+```
+
+The second plot shows Allan Kittleman’s victory margins in terms of
+percentage of votes in each precinct. This graph is produced
+identically to the previous one, except that I use the
+`Pct.REP.Margin` variable to color the precincts (instead of
+`REP.Margin`) and I set the maximum red color to be used for a 70%
+winning margin for Kittleman and the maximum blue color to be used for
+a 70% winning margin for Courtney Watson.
+
+```{r fig.width = 9}
+g <- ggplot() +
+    geom_polygon(data = precinct_df,
+                 aes(x = long, y = lat, group = group, fill = Pct.REP.Margin)) +
+    geom_polygon(data = council_df,
+                 aes(x = long, y = lat, group = group),
+                 fill = NA,
+                 colour = "white") +
+    geom_text(data = council_centers_df,
+              aes(x = long, y = lat, label = District),
+              size = 7,
+              colour = "white",
+              show_guide = FALSE) +
+    coord_equal() +
+    scale_fill_gradient("Margin (% of Vote)",
+                        limits = c(-70, 70),
+                        low = "blue",
+                        high = "red",
+                        space = "Lab",
+                        guide = "colourbar") +
+    theme(axis.title = element_blank(),
+          axis.text = element_blank(),
+          axis.ticks = element_blank(),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.background = element_blank()) +
+    ggtitle("Allan Kittleman 2014 Margins by Precinct (% of Votes)\nPrecinct Sizes Based on Registered Voters on Election Day")
+print(g)
+```
+
+## Conclusion
+
+The cartogram versions of these maps look less red than the original
+versions, but it’s still apparent that Allan Kittleman ran up sizable
+margins of victory not just in district 5 but also in major portions
+of the other districts. Courtney Watson’s victory margins look
+considerably softer, even in the Columbia precincts.
+
+## Appendix
+
+I used the following R environment in doing the analysis for this
+example:
+
+```{r sessionInfo}
+sessionInfo()
+```
+
+The underlying GDAL library for the rgdal packages is from the
+KyngChaos [GDAL Complete][] distribution version 1.11 for Mac OS X.
+
+[GDAL Complete]: http://www.kyngchaos.com/software/frameworks#gdal_complete
+
+You can find the source code for this analysis and others at my
+[HoCoData repository on GitHub][hocodata]. This document and its
+source code are available for unrestricted use, distribution and
+modification under the terms of the Creative Commons [CC0 1.0
+Universal (CC0 1.0) Public Domain Dedication][CC0].  Stated more
+simply, you’re free to do whatever you’d like with it.
+
+[hocodata]: https://github.com/frankhecker/hocodata
+[CC0]: https://creativecommons.org/publicdomain/zero/1.0/
