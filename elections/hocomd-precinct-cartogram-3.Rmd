@@ -1,0 +1,419 @@
+---
+title: "Creating Howard County Precinct Cartograms Based on 2014
+Registered Voters, Part 3"
+author: "Frank Hecker"
+date: "March 9, 2015"
+output: html_document
+---
+
+## Introduction
+
+_This is part 3 of a three-part series; see also [part 1][] and
+[part 2][]._
+
+[part 1]: http://rpubs.com/frankhecker/63528
+[part 2]: http://rpubs.com/frankhecker/63529
+
+In doing analyses of precinct-level voting data from the Howard County
+2014 general election (using data from the [Maryland State Board of
+Elections][MSBoE] and the [Howard County Board of Elections][HCBoE]),
+one problem is that maps drawn using that data are inherently
+misleading: Precincts in western Howard County are much larger than
+precincts in Columbia and eastern Howard County, so they visually
+dominate the maps.
+
+[MSBoE]: http://elections.state.md.us/elections/2014/election_data/index.html
+[HCBoE]: http://www.howardcountymd.gov/Departments.aspx?id=4294968268
+
+One way to reduce this effect is to create [cartograms][], maps in
+which the visual sizes of the geographic subdivisions are based not on
+their actual geographic area but on some other variable associated
+with them. In particular, for political maps of Howard County I would
+like to display precincts sized according to the number of registered
+voters in each precinct.
+
+[cartograms]: http://en.wikipedia.org/wiki/Cartogram
+
+Creating a voter-based cartogram of Howard County precincts requires
+distorting the precinct boundaries so as to change the area of each
+precinct while still preserving the overall shape of the precinct as
+much as possible, and also preserving its relationship to its
+neighboring precincts. This requires some relatively sophisticated
+mathematics, and unfortunately there is no existing R package that can
+do it well. Instead I use [scapetoad][], a Java-based application
+available for Microsoft Windows, Mac OS X, and Linux.
+
+[scapetoad]: http://scapetoad.choros.ch
+
+In [part 1][] of this series I described the overall process of
+preparing Howard County map data for use with the scapetoad
+application. In [part 2][] I described the process of running the
+scapetoad application to produce the desired cartogram(s) and checking
+the results. In this document I present examples of the completed
+cartograms, including overlaying Howard County council district,
+Maryland state legislative district, and US congressional district
+boundaries on the base precinct-level cartogram. I present an
+unmodified precinct map as a comparison.
+
+## Loading libraries
+
+I use the [R statistical package][] run from the [RStudio][]
+development environment, along with the [dplyr][] package for data
+manipulation, the [ggplot2] package for plotting, and the [sp][] and
+[rgdal][] packages to read mapping data.
+
+[R statistical package]: http://r-project.org
+[RStudio]: http://www.rstudio.com/products/rstudio
+[dplyr]: http://cran.rstudio.com/web/packages/dplyr/vignettes/introduction.html
+[ggplot2]: http://ggplot2.org
+[sp]: http://cran.r-project.org/web/packages/sp/index.html
+[rgdal]: http://cran.r-project.org/web/packages/rgdal/index.html
+
+```{r}
+library("dplyr", warn.conflicts = FALSE)
+library("ggplot2")
+library("sp")
+library("rgdal")
+```
+
+The rgdal package also requires installing the GDAL mapping library on
+the underlying operating system.
+
+## Overall approach
+
+In this document I perform the following steps:
+
+* Download and load all the necessary cartogram shapefiles, along with
+  an unmodified precinct map for comparison.
+* Transform the cartogram shapefiles and the unmodified precinct map
+  for use with the `ggplot()` function.
+* Determine where to place labels for individual map areas (precincts
+  and districts).
+* Plot the unmodified precinct map and the base precinct cartogram
+  showing the precincts with labels.
+* Plot each of the district cartograms in turn as a layer with labels
+  on top of the precinct-level cartogram.
+
+## Downloading the cartogram shapefiles
+
+I first download an unmodified precinct map as published on
+[`data.howardcountymd.gov`][].
+
+[`data.howardcountymd.gov`]: http://data.howardcountymd.gov
+
+```{r}
+download.file("https://data.howardcountymd.gov/geoserver/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=general:Voting_Precincts&outputFormat=shape-zip",
+              "Voting_Precincts.zip",
+              method = "curl")
+```
+
+I then download all of the cartogram shapefiles as published to the
+[datasets][] section of my [hocodata][] GitHub repository.
+
+[datasets]: https://github.com/frankhecker/hocodata/tree/master/datasets
+[hocodata]: https://github.com/frankhecker/hocodata
+
+```{r}
+url <- "https://raw.githubusercontent.com/frankhecker/hocodata/master/datasets/"
+files <- c("Voting_Precincts_Cartogram.zip",
+           "Council_Districts_Cartogram.zip",
+           "Legislative_Districts_Cartogram.zip",
+           "Congressional_Districts_Cartogram.zip")
+for (f in files) {
+    download.file(paste(url, f, sep = ""), f, method = "curl")
+}
+```
+
+Since the boundary data is in `.zip` files I need to unzip the files
+to extract the actual shapefiles.
+
+```{r}
+unzip("Voting_Precincts.zip", overwrite = TRUE)
+for (f in files) {
+    unzip(f, overwrite = TRUE)
+}
+```
+
+Finally I read in the boundary shapefile data.
+
+```{r}
+unmodified_map <- readOGR(dsn = ".",
+                          layer = "Voting_PrecinctsPolygon")
+precinct_map <- readOGR(dsn = ".",
+                        layer = "Voting_Precincts_CartogramPolygon")
+council_map <- readOGR(dsn = ".",
+                       layer = "Council_Districts_CartogramPolygon")
+legis_map <- readOGR(dsn = ".",
+                           layer = "Legislative_Districts_CartogramPolygon")
+cong_map <- readOGR(dsn = ".",
+                             layer = "Congressional_Districts_CartogramPolygon")
+```
+
+## Converting maps for use with `ggplot()`
+
+Before I plot the maps I have to convert the spatial data to
+normal data frames usable with the `ggplot()` function.
+
+```{r}
+# Define a function to convert spatial data into a ggplot-compatible data frame.
+convert_map <- function(map) {
+    temp_map <- map  # Avoid modifying original map in the next step
+    temp_map@data$id <- rownames(temp_map@data)
+    points <- fortify(temp_map, region = "id")
+    df <- full_join(points, temp_map@data, by = "id")
+    return(df)
+}
+# Convert the spatial data.
+unmodified_df <- convert_map(unmodified_map)
+precinct_df <- convert_map(precinct_map)
+council_df <- convert_map(council_map)
+legis_df <- convert_map(legis_map)
+cong_df <- convert_map(cong_map)
+```
+
+## Labeling map areas
+
+Since I want to label the various map areas I next compute the
+centroids of the precincts and districts in order to position the
+labels on the map.
+
+```{r}
+# Unmodified precincts
+unmodified_centers = coordinates(unmodified_map)
+unmodified_centers_df <- as.data.frame(unmodified_centers)
+names(unmodified_centers_df) <- c("long", "lat")
+unmodified_centers_df$Precinct = as.character(unmodified_map@data$PRECINCT20)
+# Precincts
+precinct_centers = coordinates(precinct_map)
+precinct_centers_df <- as.data.frame(precinct_centers)
+names(precinct_centers_df) <- c("long", "lat")
+precinct_centers_df$Precinct = as.character(precinct_map@data$PRECINCT20)
+# Howard County council districts
+council_centers = coordinates(council_map)
+council_centers_df <- as.data.frame(council_centers)
+names(council_centers_df) <- c("long", "lat")
+council_centers_df$District = as.character(council_map@data$DISTRICT20)
+# Maryland state legislative districts
+legis_centers = coordinates(legis_map)
+legis_centers_df <- as.data.frame(legis_centers)
+names(legis_centers_df) <- c("long", "lat")
+legis_centers_df$District = as.character(legis_map@data$DISTRICT)
+# US congressional districts
+cong_centers = coordinates(cong_map)
+cong_centers_df <- as.data.frame(cong_centers)
+names(cong_centers_df) <- c("long", "lat")
+cong_centers_df$District = as.character(cong_map@data$Congress_D)
+```
+
+The cartogram’s shapes for Howard County council districts 1 and 5 are
+so distorted that the centroids are almost outside the district
+boundaries. I therefore tweak the locations for the labels for those
+districts so that they’ll appear in more suitable locations, moving
+the label for district 1 a bit north and the label for district 5 a
+bit west.
+
+```{r}
+# District 1
+council_centers_df$lat[1] <- council_centers_df$lat[1] + 9000
+# District 5
+council_centers_df$long[5] <- council_centers_df$long[5] - 9000
+```
+
+I also tweak the locations for the labels for Maryland state
+legislative districts 12, 9A, and 9B so that they’ll appear in more
+suitable locations.
+
+```{r}
+# District 12
+legis_centers_df$long[1] <- legis_centers_df$long[1] + 17400
+legis_centers_df$lat[1] <- legis_centers_df$lat[1] - 3000
+# District 9A
+legis_centers_df$lat[4] <- legis_centers_df$lat[4] + 8400
+# District 9B
+legis_centers_df$long[3] <- legis_centers_df$long[3] + 9000
+```
+
+Finally I tweak the location for the label for US congressional
+district 2 so that it will appear in a more suitable location.
+
+```{r}
+# District 2
+#cong_centers_df$long[1] <- cong_centers_df$long[1] + 17400
+cong_centers_df$lat[1] <- cong_centers_df$lat[1] - 6000
+```
+
+## Plotting the cartograms
+
+I first plot the unmodified precinct map, as follows:
+
+* Plot the unmodified map for the precincts, outlining their
+  boundaries in gray.
+* Plot the text labels for the map areas in black at an appropriate
+  size.
+* Force the x and y coordinate scales to be equal to avoid further
+  distortion.
+* Remove all extraneous plot elements, leaving only the map
+  itself.
+
+I don’t make any effort to tweak the locations of the labels for the
+precincts, so labels will appear out of place in cases where the
+precincts have odd shapes and the precinct centroids are close to
+or even outside the boundaries of the precincts themselves.
+
+```{r fig.width = 9}
+g <- ggplot() +
+    geom_polygon(data = unmodified_df,
+                 aes(x = long, y = lat, group = group),
+                 fill = NA,
+                 colour = "grey") +
+    geom_text(data = unmodified_centers_df,
+              aes(x = long, y = lat, label = Precinct),
+              size = 2,
+              colour = "black",
+              show_guide = FALSE) +
+    coord_equal() +
+    theme(axis.title = element_blank(),
+          axis.text = element_blank(),
+          axis.ticks = element_blank(),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.background = element_blank())
+print(g)
+```
+
+I next plot the precinct cartogram, following the same procedure as
+for the unmodified precinct map. As with the unmodified map, because
+I don’t modify the locations of the text labels some show up in odd
+places; the problem is made worse for the cartogram because the
+precincts’ shapes are distorted.
+
+```{r fig.width = 9}
+g <- ggplot() +
+    geom_polygon(data = precinct_df,
+                 aes(x = long, y = lat, group = group),
+                 fill = NA,
+                 colour = "grey") +
+    geom_text(data = precinct_centers_df,
+              aes(x = long, y = lat, label = Precinct),
+              size = 2,
+              colour = "black",
+              show_guide = FALSE) +
+    coord_equal() +
+    theme(axis.title = element_blank(),
+          axis.text = element_blank(),
+          axis.ticks = element_blank(),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.background = element_blank())
+print(g)
+```
+
+I next plot the Howard County council districts overlaid on the
+precinct cartogram. The procedure is the same as in the previous
+plots, except that I add a second layer to the plot showing the
+council boundaries and I label the council districts instead of the
+precincts.
+
+```{r fig.width = 9}
+g <- ggplot() +
+    geom_polygon(data = precinct_df,
+                 aes(x = long, y = lat, group = group),
+                 fill = NA,
+                 colour = "grey") +
+    geom_polygon(data = council_df,
+                 aes(x = long, y = lat, group = group),
+                 fill = NA,
+                 colour = "black") +
+    geom_text(data = council_centers_df,
+              aes(x = long, y = lat, label = District),
+              size = 7,
+              colour = "black",
+              show_guide = FALSE) +
+    coord_equal() +
+    theme(axis.title = element_blank(),
+          axis.text = element_blank(),
+          axis.ticks = element_blank(),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.background = element_blank())
+print(g)
+```
+
+I plot the Maryland state legislative districts overlaid on the
+precinct cartogram.
+
+```{r fig.width = 9}
+g <- ggplot() +
+    geom_polygon(data = precinct_df,
+                 aes(x = long, y = lat, group = group),
+                 fill = NA,
+                 colour = "grey") +
+    geom_polygon(data = legis_df,
+                 aes(x = long, y = lat, group = group),
+                 fill = NA,
+                 colour = "black") +
+    geom_text(data = legis_centers_df,
+              aes(x = long, y = lat, label = District),
+              size = 7,
+              colour = "black",
+              show_guide = FALSE) +
+    coord_equal() +
+    theme(axis.title = element_blank(),
+          axis.text = element_blank(),
+          axis.ticks = element_blank(),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.background = element_blank())
+print(g)
+```
+
+Finally, I plot the US congressional districts overlaid on the
+precinct cartogram.
+
+```{r fig.width = 9}
+g <- ggplot() +
+    geom_polygon(data = precinct_df,
+                 aes(x = long, y = lat, group = group),
+                 fill = NA,
+                 colour = "grey") +
+    geom_polygon(data = cong_df,
+                 aes(x = long, y = lat, group = group),
+                 fill = NA,
+                 colour = "black") +
+    geom_text(data = cong_centers_df,
+              aes(x = long, y = lat, label = District),
+              size = 7,
+              colour = "black",
+              show_guide = FALSE) +
+    coord_equal() +
+    theme(axis.title = element_blank(),
+          axis.text = element_blank(),
+          axis.ticks = element_blank(),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.background = element_blank())
+print(g)
+```
+
+## Appendix
+
+I used the following R environment in creating this document:
+
+```{r sessionInfo}
+sessionInfo()
+```
+
+The underlying GDAL library for the rgdal packages is from the
+KyngChaos [GDAL Complete][] distribution version 1.11 for Mac OS X.
+
+[GDAL Complete]: http://www.kyngchaos.com/software/frameworks#gdal_complete
+
+You can find the source code for this document and others at my
+[HoCoData repository on GitHub][hocodata]. This document and its
+source code are available for unrestricted use, distribution and
+modification under the terms of the Creative Commons [CC0 1.0
+Universal (CC0 1.0) Public Domain Dedication][CC0].  Stated more
+simply, you’re free to do whatever you’d like with it.
+
+[hocodata]: https://github.com/frankhecker/hocodata
+[CC0]: https://creativecommons.org/publicdomain/zero/1.0/
