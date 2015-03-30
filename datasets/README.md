@@ -3,6 +3,10 @@
 This directory contains the following datasets for Howard County,
 Maryland:
 
+* [`GG14_Turnout_by_party_by_precinct.csv`][]. This dataset is the CSV
+  version of [`GG14_Turnout_by_party_by_precinct.xlsx`][], state-wide
+  precinct-level turnout data published by the Maryland State Board of
+  Elections as part of its [2014 general election reports][ge2014].
 * [`hocomd-2014-precinct-council.csv`][]. This dataset maps the 118
   Howard County election precincts to the county council districts in
   which those precincts are included. The data is taken from the
@@ -46,6 +50,9 @@ Maryland:
   map of US Congressional districts matching the precinct-level
   cartogram (ESRI shapefile).
 
+[`GG14_Turnout_by_party_by_precinct.csv`]: https://raw.githubusercontent.com/frankhecker/hocodata/master/datasets/GG14_Turnout_by_party_by_precinct.csv
+[`GG14_Turnout_by_party_by_precinct.xlsx`]: http://www.elections.state.md.us/elections/2014/turnout/general/GG14_Turnout_by_party_by_precinct.xlsx
+[ge2014]: http://www.elections.state.md.us/elections/2014/
 [`hocomd-2014-precinct-council.csv`]: https://raw.githubusercontent.com/frankhecker/hocodata/master/datasets/hocomd-2014-precinct-council.csv
 [`hocomd-2014-general-election-turnout.csv`]: https://raw.githubusercontent.com/frankhecker/hocodata/master/datasets/hocomd-2014-general-election-turnout-by-precinct.csv
 [2014 general election results]: http://www.howardcountymd.gov/WorkArea/linkit.aspx?LinkIdentifier=id&ItemID=6442477038&libID=6442477030
