@@ -49,6 +49,9 @@ Maryland:
 * [`Congressional_Districts_Cartogram.zip`][]. This dataset contains a
   map of US Congressional districts matching the precinct-level
   cartogram (ESRI shapefile).
+* [`Voting_Precincts_Deformation_Grid.zip`][]. This dataset contains
+  the defomration grid by which the precinct and district cartograms
+  above were created (ESRI shapefile).
 
 [`GG14_Turnout_by_party_by_precinct.csv`]: https://raw.githubusercontent.com/frankhecker/hocodata/master/datasets/GG14_Turnout_by_party_by_precinct.csv
 [`GG14_Turnout_by_party_by_precinct.xlsx`]: http://www.elections.state.md.us/elections/2014/turnout/general/GG14_Turnout_by_party_by_precinct.xlsx
@@ -63,3 +66,4 @@ Maryland:
 [`Council_Districts_Cartogram.zip`]: https://raw.githubusercontent.com/frankhecker/hocodata/master/datasets/Council_Districts_Cartogram.zip
 [`Legislative_Districts_Cartogram.zip`]: https://raw.githubusercontent.com/frankhecker/hocodata/master/datasets/Legislative_Districts_Cartogram.zip
 [`Congressional_Districts_Cartogram.zip`]: https://raw.githubusercontent.com/frankhecker/hocodata/master/datasets/Congressional_Districts_Cartogram.zip
+[`Voting_Precincts_Deformation_Grid.zip`]: https://raw.githubusercontent.com/frankhecker/hocodata/master/datasets/Voting_Precincts_Deformation_Grid.zip
