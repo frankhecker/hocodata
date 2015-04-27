@@ -1,0 +1,372 @@
+---
+title: "Howard County Turnout in the 2014 General Election, Part 1"
+author: "Frank Hecker"
+date: "April 26, 2015"
+output: html_document
+---
+
+## Introduction
+
+In the 2014 gubermatorial general election in Howard County, Maryland,
+a subject of interest was relative turnout for Republican
+vs. Democratic voters, with higher Republican turnout seen as the key
+for Allan Kittleman’s election as County Executive (not to mention
+other Republican victories from Larry Hogan on down). A related
+question is whether turnout was depressed in certain Howard County
+council districts due to lack of opposition to the incumbent council
+members. (In particular, in districts 3 and 4 Jen Terrasa and Mary-Kay
+Sigaty respectively had no declared Republican opponents.)
+
+In this and subsequent parts of this series I take a look at turnout
+statistics to explore these questions, starting in part 1 with a look
+at the state-wide turnout datasets for the Maryland 2014 general
+election.
+
+## Load packages
+
+For this analysis I use the [R statistical package][] run from the
+[RStudio][] development environment, along with the [readxl][] package
+to extract data from Excel spreadsheets and the [dplyr][] package to
+do data manipulation.
+
+[R statistical package]: http://r-project.org
+[RStudio]: http://www.rstudio.com/products/rstudio
+[readxl]: http://cran.rstudio.com/web/packages/readxl/
+[dplyr]: http://cran.rstudio.com/web/packages/dplyr/vignettes/introduction.html
+
+```{r}
+library("readxl")
+library("dplyr", warn.conflicts = FALSE)
+```
+
+## Data sources
+
+The Maryland State Board of Elections has published a number of
+turnout-related reports (in both PDF and Microsoft Excel format) as
+part of its [2014 general election reports][md-ge2014]. The two
+reports of most interest for my purpose are the [state-wide per-county
+turnout statistics][md-turnout-county] [Excel] and the [state-wide
+per-precinct turnout statistics][md-turnout-precinct] [Excel].
+
+[md-turnout-county]: http://www.elections.state.md.us/elections/2014/turnout/general/GG14_Turnout_by_party_by_county.xlsx
+[md-turnout-precinct]: http://www.elections.state.md.us/elections/2014/turnout/general/GG14_Turnout_by_party_by_precinct.xlsx
+[md-ge2014]: http://www.elections.state.md.us/elections/2014/
+
+First I download the Excel-format data files from the Maryland State
+Board of Elections containing statewide 2014 general election turnout
+by county and by precincts, and store a copy of the data in the local
+files `GG14_Turnout_by_party_by_county.xlsx` and
+`GG14_Turnout_by_party_by_precinct.xlsx`.
+
+```{r}
+download.file(
+"http://www.elections.state.md.us/elections/2014/turnout/general/GG14_Turnout_by_party_by_county.xlsx",
+              "GG14_Turnout_by_party_by_county.xlsx",
+              method = "curl")
+download.file(
+"http://www.elections.state.md.us/elections/2014/turnout/general/GG14_Turnout_by_party_by_precinct.xlsx",
+              "GG14_Turnout_by_party_by_precinct.xlsx",
+              method = "curl")
+```
+
+I then load the Excel spreadsheets into the dataframes
+`county_turnout_raw` and `precinct_turnout_raw` respectively.
+
+```{r}
+county_turnout_raw <- read_excel("GG14_Turnout_by_party_by_county.xlsx")
+colnames(county_turnout_raw)[7] <- "Percent_Turnout"
+str(county_turnout_raw)
+precinct_turnout_raw <- read_excel("GG14_Turnout_by_party_by_precinct.xlsx")
+str(precinct_turnout_raw)
+```
+
+## Cleaning the data
+
+Unfortunately the spreadsheet for the per-county turnout organizes its
+data in a way that is not optimal for analysis in R: There are
+separate sections (groups of rows) for each party, each with a header
+row and a subtotal row, and an initial section for overall turnout
+(all parties).
+
+For my purposes it is better to identify the party using a separate
+variable (column), and to eliminate all subtotal and total rows.
+(They can always be recomputed as needed.) I therefore do the
+following:
+
+* Add a new "Party" column to the dataframe, using as its values a
+  vector that has party labels for those rows representing actual
+  party turnout (as determined by inspecting the spreadsheet by hand),
+  and NA values for other rows (e.g., subtotals, headers, and blank
+  rows).
+* Retain only rows with a valid party label.
+
+I also convert the various counts from character strings to integers.
+
+```{r}
+parties <- c(rep(NA, 26),
+             rep("Republican", 24),
+             rep(NA, 4),
+             rep("Democrat", 24),
+             rep(NA, 4),
+             rep("Libertarian", 24),
+             rep(NA, 4),
+             rep("Green", 24),
+             rep(NA, 2),
+             rep("Other Parties", 24),
+             rep(NA, 3),
+             rep("Unaffiliated", 24),
+             rep(NA, 6))
+county_turnout <- county_turnout_raw %>%
+    mutate(Party = parties) %>%
+    filter(!is.na(Party)) %>%
+    mutate(LBE = Totals,
+           Polls = as.integer(POLLS),
+           Early_Voting = as.integer(EV),
+           Absentee = as.integer(ABS),
+           Provisional = as.integer(PROV),
+           Eligible_Voters = as.integer(ELIGIBLE_VOTERS)) %>%
+    select(LBE,
+           Polls,
+           Early_Voting,
+           Absentee,
+           Provisional,
+           Eligible_Voters,
+           Percent_Turnout,
+           Party)
+str(county_turnout)
+```
+
+Next I do a check to confirm that the `county_turnout` dataset has
+values consistent with the original spreadsheet, by totaling the
+counts and confirming that they match the corresponding state-wide
+totals from row 25 of the original spreadsheet.
+
+```{r}
+count_total_county <- county_turnout %>%
+    summarise(Polls = sum(Polls),
+              Early_Voting = sum(Early_Voting),
+              Absentee = sum(Absentee),
+              Provisional = sum(Provisional),
+              Eligible_Voters = sum(Eligible_Voters))
+print(count_total_county)
+stopifnot(count_total_county == county_turnout_raw[25,2:6])
+```
+
+Next I turn to the precinct-level turnout data. This dataset is much
+easier to work with: Each row contains data for a particular party in
+a particular precinct. I change the variable names to mixed case for
+readability, the variable types as appropriate, and the values for the
+`Party` variable to use initial capitals instead of upper case only.
+
+```{r}
+precinct_turnout <- precinct_turnout_raw %>%
+    mutate(Election_Code = ELECTION_CODE,
+           LBE_Code = as.integer(LBE_CODE),
+           Congressional_District_Code = as.integer(CONGRESSIONAL_DISTRICT_CODE),
+           Legislative_District_Code = LEGISLATIVE_DISTRICT_CODE,
+           Precinct = PRECINCT,
+           Party = gsub("(^|[[:space:]])([[:alpha:]])([[:alpha:]]*)",
+                        "\\1\\U\\2\\L\\3",
+                        PARTY,
+                        perl=TRUE),
+           Polls = as.integer(POLLS),
+           Early_Voting = as.integer(EARLY_VOTING),
+           Absentee = as.integer(ABSENTEE),
+           Provisional = as.integer(PROVISIONAL),
+           Eligible_Voters = as.integer(ELIGIBLE_VOTERS)) %>%
+    select(Election_Code,
+           LBE,
+           LBE_Code,
+           Congressional_District_Code,
+           Legislative_District_Code,
+           Precinct,
+           Party,
+           Polls,
+           Early_Voting,
+           Absentee,
+           Provisional,
+           Eligible_Voters,
+           Percentage)
+str(precinct_turnout)
+```
+
+# Checking the data
+
+In theory the county-level dataset is simply a summary of the
+precinct-level dataset. Now that I’ve cleaned the two datasets and
+made them consistent in terms of variable names, types, and values I
+check that hypothesis.
+
+I first check that the parties listed in the county turnout dataset
+are the exact same parties as in the precinct turnout dataset, and
+vice versa:
+
+```{r}
+sort(unique(county_turnout$Party))
+sort(unique(precinct_turnout$Party))
+```
+
+Next I check to see if the counts in the precinct turnout dataset are
+consistent with the counts in the county turnout dataset, by comparing
+the total counts for the entire state calculated using each dataset:
+
+```{r}
+count_total_precinct <- precinct_turnout %>%
+    summarise(Polls = sum(Polls),
+              Early_Voting = sum(Early_Voting),
+              Absentee = sum(Absentee),
+              Provisional = sum(Provisional),
+              Eligible_Voters = sum(Eligible_Voters))
+print(count_total_county)
+print(count_total_precinct)
+```
+
+All counts match except for the total provisional votes, for which
+the precinct-level data shows one less provisional vote than the
+county-level data.
+
+To narrow down the source of the discrepancy I compare the counts of
+provisional votes for each county using the two datasets:
+
+```{r}
+provisional_county <- county_turnout %>%
+    group_by(LBE) %>%
+    summarise(Provisional_County = sum(Provisional))
+provisional_precinct <- precinct_turnout %>%
+    group_by(LBE) %>%
+    summarise(Provisional_Precinct = sum(Provisional))
+left_join(provisional_county, provisional_precinct) %>%
+    print.data.frame()
+```
+
+It appears that the one-vote discrepancy is for Prince George’s
+County. To narrow things down even further I print the number of
+provisional voters for each party in Prince George’s County:
+
+```{r}
+pg_provisional_county <- county_turnout %>%
+    filter(LBE == "Prince George\'s") %>%
+    mutate(Provisional_County = Provisional) %>%
+    select(Party, Provisional_County)
+pg_provisional_precinct <- precinct_turnout %>%
+    filter(LBE == "Prince George\'s") %>%
+    group_by(Party) %>%
+    summarise(Provisional_Precinct = sum(Provisional))
+left_join(pg_provisional_county, pg_provisional_precinct) %>%
+    print.data.frame()
+```
+
+The discrepancy is thus due to a difference in the number of
+provisional votes cast by members of the Libertarian party in Prince
+George’s County.
+
+Next I check the calculation of the turnout percentage figures (which
+are actually fractions, not percentages per se). I recalculate the
+percentages for the precinct-level data, compute the absolute
+difference for each precinct between the original figure and the
+recalculated figure, and determine the maximum absolute difference
+across all precincts.
+
+(The calculation of turnout percentage is not totally straightforward,
+since I must account for cases in which there are no eligible voters
+for a given party in a given precinct. In the original dataset the
+turnout percentage is set to zero in these cases, so I do the same.)
+
+```{r}
+precinct_turnout %>%
+    mutate(Pct = ifelse(Eligible_Voters <= 0,
+                        0,
+                        (Polls+Early_Voting+Absentee+Provisional)/Eligible_Voters)) %>%
+    summarise(max(abs(Percentage - Pct)))
+```
+
+The maximum absolute difference is zero, so the original percentage
+values were indeed calculated as I expected.
+
+## The final precinct-level dataset
+
+With the exception of the one-vote discrepancy in Prince George’s
+County noted above, the county-level dataset is simply a summarization
+of the precinct-level dataset. I therefore choose to keep only the
+precinct-level dataset, and write it out as a CSV file
+`gg14-turnout-by-party-by-precinct.csv` for use in the subsequent
+parts of this analysis. (I use a slightly different name than that
+of the original Excel spreadsheet to emphasize that this file is
+not simply a CSV export of the spreadsheet.)
+
+```{r}
+write.csv(precinct_turnout,
+          file = "gg14-turnout-by-party-by-precinct.csv",
+          quote = TRUE,
+          row.names = FALSE)
+```
+
+The precinct-level dataset contains one row for each combination of
+county, precinct, and party; each row contains the following
+variables:
+
+* `Election_Code`: The code for the year and type of election; for
+  this dataset it has the single value “GG14” (gubernatorial general
+  election for 2014). (character string)
+* `LBE`: The jurisdiction of the local board of elections (e.g., “Howard”
+  or “Baltimore City”). (character string)
+* `LBE_Code`: The code for the local board of elections (e.g., 14 for
+  Howard County). (integer)
+* `Congressional_District_Code`: The US Congressional district with
+  which the precinct is associated (e.g., 7). (integer)
+* `Legislative_District_Code`: The Maryland state legislative district
+  with which the precinct is associated (e.g., “09A” for district 9A).
+  It consists of a two-digit zero-filled value optionally followed by
+  a single letter “A”, “B”, etc. (character string)
+* `Precinct`: The designator for the precinct (e.g., “002-006”). It
+  consists of two three-digit zero-filled values separated by a
+  hyphen. A precinct designator is unique only within a given
+  LBE jurisdiction. (character string)
+* `Party`: The party affiliation of people voting, or “Unaffiliated”
+  for those who did not indicate a party affiliation when registering
+  to vote. The recognized party affiliations are “Republican”,
+  “Democrat”, “Libertarian”, and “Green”; several small parties are
+  lumped together as “Other Parties”. (character string)
+* `Polls`: The number of people who voted at the polls on election
+  day. (integer)
+* `Early_Voting`: The number of people who voted during the early
+  voting period. (integer)
+* `Absentee`: The number of people who voted via absentee
+  ballot. (integer)
+* `Provisional`: The number of people who cast provisional
+  ballots. (integer)
+* `Eligible_Voters`: The number of people eligible to vote (i.e.,
+  registered to vote and otherwise qualified). (integer)
+* `Percentage`: The fraction of eligible voters who actually
+  voted (e.g., 0.5745). It is computed as the sum of the `Poll`,
+  `Early_Voting`, `Absentee`, and `Provisional` counts, divided by the
+  `Eligible_Voters` count. Note that it must be multiplied by 100 to
+  obtain a true percentage. (numeric)
+
+To make the file `gg14-turnout-by-party-by-precinct.csv` more
+accessible to myself and others, I put a copy of the file in my
+[hocodata Github repository][]; it can be downloaded at the following
+URL:
+
+https://raw.githubusercontent.com/frankhecker/hocodata/master/datasets/gg14-turnout-by-party-by-precinct.csv
+
+[hocodata Github repository]: https://github.com/frankhecker/hocodata/
+
+## Appendix
+
+I used the following R environment in doing the analysis for this
+example:
+
+```{r sessionInfo}
+sessionInfo()
+```
+
+You can find the source code for this analysis and others at my
+[HoCoData repository on GitHub][hocodata]. This document and its
+source code are available for unrestricted use, distribution and
+modification under the terms of the Creative Commons [CC0 1.0
+Universal (CC0 1.0) Public Domain Dedication][CC0].  Stated more
+simply, you’re free to do whatever you’d like with it.
+
+[hocodata]: https://github.com/frankhecker/hocodata
+[CC0]: https://creativecommons.org/publicdomain/zero/1.0/
