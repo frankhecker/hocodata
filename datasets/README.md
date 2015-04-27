@@ -3,10 +3,12 @@
 This directory contains the following datasets for Howard County,
 Maryland:
 
-* [`GG14_Turnout_by_party_by_precinct.csv`][]. This dataset is the CSV
+* [`gg14-turnout-by-party-by-precinct.csv`][]. This dataset is a CSV
   version of [`GG14_Turnout_by_party_by_precinct.xlsx`][], state-wide
   precinct-level turnout data published by the Maryland State Board of
   Elections as part of its [2014 general election reports][ge2014].
+  Variables and values have been converted to mixed case for better
+  readability.
 * [`hocomd-2014-precinct-council.csv`][]. This dataset maps the 118
   Howard County election precincts to the county council districts in
   which those precincts are included. The data is taken from the
@@ -17,12 +19,14 @@ Maryland:
      '006-035' (character string).
   - `Council.District`. The county council district ('1' through '5')
      in which the precinct is included (character string).
-* [`hocomd-2014-general-election-turnout.csv`][]. This dataset
-  contains turnout statistics for each of the 118 Howard County
-  precincts in the 2014 general election. The data is taken from the
-  per-precinct [2014 general election results][] (PDF) from the
-  [Howard County Board of Elections][]. The dataset has five
-  variables, with meanings and types as follows:
+
+* [`hocomd-2014-general-election-turnout.csv`][] (obsoleted by
+  [`gg14-turnout-by-party-by-precinct.csv`][]).  This dataset contains
+  turnout statistics for each of the 118 Howard County precincts in
+  the 2014 general election. The data is taken from the per-precinct
+  [2014 general election results][] (PDF) from the [Howard County
+  Board of Elections][]. The dataset has five variables, with meanings
+  and types as follows:
   - `Precinct`. The precinct designator in the form '000-000', e.g.,
     '006-035' (character string).
   - `Polling.Place`. The polling place for the precinct, which may
@@ -53,7 +57,7 @@ Maryland:
   the defomration grid by which the precinct and district cartograms
   above were created (ESRI shapefile).
 
-[`GG14_Turnout_by_party_by_precinct.csv`]: https://raw.githubusercontent.com/frankhecker/hocodata/master/datasets/GG14_Turnout_by_party_by_precinct.csv
+[`gg14-turnout-by-party-by-precinct.csv`]: https://raw.githubusercontent.com/frankhecker/hocodata/master/datasets/gg14-turnout-by-party-by-precinct.csv
 [`GG14_Turnout_by_party_by_precinct.xlsx`]: http://www.elections.state.md.us/elections/2014/turnout/general/GG14_Turnout_by_party_by_precinct.xlsx
 [ge2014]: http://www.elections.state.md.us/elections/2014/
 [`hocomd-2014-precinct-council.csv`]: https://raw.githubusercontent.com/frankhecker/hocodata/master/datasets/hocomd-2014-precinct-council.csv
