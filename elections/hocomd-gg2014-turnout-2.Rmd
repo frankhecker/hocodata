@@ -1,0 +1,177 @@
+---
+title: "Howard County Turnout in the 2014 General Election, Part 2"
+author: "Frank Hecker"
+date: "May 3, 2015"
+output: html_document
+---
+
+## Introduction
+
+In the 2014 gubermatorial general election in Howard County, Maryland,
+a subject of interest was relative turnout for Republican
+vs. Democratic voters, with higher Republican turnout seen as the key
+for Allan Kittleman’s election as County Executive (not to mention
+other Republican victories from Larry Hogan on down). A related
+question is whether turnout was depressed in certain Howard County
+council districts due to lack of opposition to the incumbent council
+members. (In particular, in districts 3 and 4 Jen Terrasa and Mary-Kay
+Sigaty respectively had no declared Republican opponents.)
+
+In part2 of this series I do some basic exploration of the turnout
+data, using a version of the statewide precinct-level dataset created
+in [part 1][].
+
+[part 1]:
+
+## Load packages
+
+For this analysis I use the [R statistical package][] run from the
+[RStudio][] development environment, along with the [dplyr][] and
+[tidyr][] packages to do data manipulation and the [ggplot2][] package
+to create plots.
+
+[R statistical package]: http://r-project.org
+[RStudio]: http://www.rstudio.com/products/rstudio
+[dplyr]: http://cran.rstudio.com/web/packages/dplyr/vignettes/introduction.html
+[tidyr]: http://cran.rstudio.com/web/packages/tidyr/
+[ggplot2]: http://cran.rstudio.com/web/packages/ggplot2/
+
+```{r}
+library("dplyr", warn.conflicts = FALSE)
+library("tidyr")
+library("ggplot2")
+```
+
+## Data sources
+
+The Maryland State Board of Elections has published a number of
+turnout-related reports (in both PDF and Microsoft Excel format) as
+part of its [2014 general election reports][md-ge2014]. For this
+analysis I use [my version][] of the [state-wide per-precinct turnout
+statistics][md-turnout-precinct] [Excel], as found in my [hocodata
+GitHub repository][].
+
+[my version]: https://raw.githubusercontent.com/frankhecker/hocodata/master/datasets/gg14-turnout-by-party-by-precinct.csv
+[md-turnout-precinct]: http://www.elections.state.md.us/elections/2014/turnout/general/GG14_Turnout_by_party_by_precinct.xlsx
+[md-ge2014]: http://www.elections.state.md.us/elections/2014/
+[hocodata GitHub repository]: https://github.com/frankhecker/hocodata/
+
+```{r}
+download.file(
+"https://raw.githubusercontent.com/frankhecker/hocodata/master/datasets/gg14-turnout-by-party-by-precinct.csv",
+              "gg14-turnout-by-party-by-precinct.csv",
+              method = "curl")
+```
+
+I then load the CSV file into the dataframe `precinct_turnout`.
+
+```{r}
+precinct_turnout <- read.csv("gg14-turnout-by-party-by-precinct.csv")
+```
+
+## Exploring turnout by party
+
+As a first step I look at turnout statistics for the entire state of
+Maryland by party, creating a new dataframe `party_turnout` as
+follows:
+
+* Group all rows in the data frame by party
+* Create new variables `Polls`, etc., to total the number of
+  people casting votes at the polls, etc.
+* Create new variables `Actual_Voters` and `Turnout` to hold the
+  the total numbers of people voting and those totals as a percentage
+  of eligible voters.
+
+```{r}
+party_turnout <- precinct_turnout %>%
+    group_by(Party) %>%
+    summarise(Polls = sum(Polls),
+              Early_Voting = sum(Early_Voting),
+              Absentee = sum(Absentee),
+              Provisional = sum(Provisional),
+              Eligible_Voters = sum(Eligible_Voters)) %>%
+    mutate(Actual_Voters = Polls + Early_Voting + Absentee + Provisional,
+           Turnout = round(100 * Actual_Voters / Eligible_Voters, 1))
+print.data.frame(party_turnout)
+```
+
+The total number of voters who are members of the smaller parties
+(Greens, Libertarians, and other parties) is very small compared to
+the number of unaffiliated voters, much less the number of Democrats
+and Republicans. Also, the turnout levels for the smaller parties
+(`r party_turnout$Turnout[2]`%, `r party_turnout$Turnout[3]`%, and
+`r party_turnout$Turnout[4]`% respectively) are more similar to the
+turnout for unaffiliated voters (`r party_turnout$Turnout[6]`%) than
+to the turnout for Democrats (`r party_turnout$Turnout[1]`%) or
+Republicans (`r party_turnout$Turnout[5]`%). I therefore recreate the
+`party_turnout` dataframe, this time assigning precinct-level data for
+the smaller parties into the “Other” category along with unaffiliated
+voters, and recalculating the turnout statistics:
+
+```{r}
+party_categories <- c("Democrat" = "Democrat",
+                      "Green" = "Other",
+                      "Libertarian" = "Other",
+                      "Other Parties" = "Other",
+                      "Republican" = "Republican",
+                      "Unaffiliated" = "Other")
+party_turnout <- precinct_turnout %>%
+    mutate(Party = party_categories[Party]) %>%
+    group_by(Party) %>%
+    summarise(Polls = sum(Polls),
+              Early_Voting = sum(Early_Voting),
+              Absentee = sum(Absentee),
+              Provisional = sum(Provisional),
+              Eligible_Voters = sum(Eligible_Voters)) %>%
+    mutate(Actual_Voters = Polls + Early_Voting + Absentee + Provisional,
+           Turnout = round(100 * Actual_Voters / Eligible_Voters, 1))
+print.data.frame(party_turnout)
+```
+
+I then create a simple bar chart showing statewide turnout percentages
+for Democrats, Republicans, and other voters:
+
+```{r}
+ggplot(party_turnout, aes(x = Party, y = Turnout)) +
+    geom_bar(stat = "identity")
+```
+
+There were clearly significant differences in turnout among the three
+groups of voters, with Republicans turnout out at the highest rate. Of
+course there were many more registered Democrats
+(`r party_turnout$Eligible_Voters[1]`) than Republicans
+(`r party_turnout$Eligible_Voters[3]`) or other voters
+(`r party_turnout$Eligible_Voters[2]`). Howver due to the differences
+in turnout the Democratic edge among those actually voting was
+smaller, as shown in the following graph.
+
+```{r}
+ggplot(party_turnout, aes(x = Party, y = Actual_Voters)) +
+    geom_bar(stat = "identity")
+```
+
+The total number of Democrats actually voting
+(`r party_turnout$Actual_Voters[1]`) was still larger than Republicans
+and other voters combined (`r party_turnout$Actual_Voters[3]` +
+`r party_turnout$Actual_Voters[2]` =
+`r party_turnout$Actual_Voters[3] + party_turnout$Actual_Voters[2]`)
+though.
+
+## Appendix
+
+I used the following R environment in doing the analysis for this
+example:
+
+```{r sessionInfo}
+sessionInfo()
+```
+
+You can find the source code for this analysis and others at my
+[HoCoData repository on GitHub][hocodata]. This document and its
+source code are available for unrestricted use, distribution and
+modification under the terms of the Creative Commons [CC0 1.0
+Universal (CC0 1.0) Public Domain Dedication][CC0].  Stated more
+simply, you’re free to do whatever you’d like with it.
+
+[hocodata]: https://github.com/frankhecker/hocodata
+[CC0]: https://creativecommons.org/publicdomain/zero/1.0/
