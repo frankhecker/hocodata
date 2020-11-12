@@ -1,0 +1,208 @@
+---
+title: "Howard County Council Supersizing, Part 1"
+author: "Frank Hecker"
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+output:
+  html_document:
+    fig_width: 8
+    fig_height: 5
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+In this document I create a shapefile to be used for Howard County Council
+redistricting calculations. The shapefile combines precinct boundaries,
+precinct populations (including breakdowns by race), and election results.
+
+For those readers unfamiliar with the [R statistical software][r] and
+the additional [Tidyverse software][tv] I use to manipulate and plot
+data, I’ve included some additional explanation of various steps.  For
+more information check out the various [ways to learn more about the
+Tidyverse][learn].
+
+[r]: https://www.r-project.org/
+[tv]: https://www.tidyverse.org/
+[learn]: https://www.tidyverse.org/learn/
+
+## Setup and data preparation
+
+### Libraries
+
+I use the following packages for the following purposes:
+
+* tidyverse: do general data manipulation.
+* readxl: read Microsoft Excel spreadsheets.
+* sf: manipulate geospatial data.
+* tools. compute MD5 checksums.
+
+```{r libraries, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(readxl)
+library(sf)
+library(tools)
+```
+
+### Data sources
+
+I use data from the following sources; see the References section
+below for more information:
+
+* Boundaries and populations for Howard County precincts are from the Maryland
+  Department of Planning data used for Congressional and Maryland legislative
+  redistricting. I use the data from the 2010 census since the data for 2020
+  are not yet available.
+* Election results for Howard County precincts are from the Maryland Board of
+  Elections. I use the results from the 2010 general election since it
+  featured local Howard County races (including for county executive and
+  county council) and the precinct number and boundaries match the 2010
+  redistricting data from the Maryland Department of Planning.
+
+### Downloading the data
+
+I download the following files:
+
+* Precinct shapefile from the 2010 Maryland redistricting effort. This
+  shapefile also contains unadjusted and adjusted population figures
+  broken down by race.
+* Howard County 2010 general election results for county races.
+
+```{r download}
+download.file("https://planning.maryland.gov/Redistricting/Documents/2010zip/precinct2010.zip",
+              "precinct.zip",
+              method = "curl")
+download.file("https://elections.maryland.gov/elections/2010/election_data/Howard_By_Precinct_2010_General.csv",
+              "election_2010.csv",
+              method = "curl")
+```
+I check the MD5 value for the files, and stop if the contents are not what
+are expected.
+
+```{r md5_check}
+stopifnot(md5sum("precinct.zip") == "d620e6d5e26e56052b02da2588e4835a")
+stopifnot(md5sum("election_2010.csv") == "bd071b938df5a3c5080c017cb5993675")
+```
+
+I unzip the precinct shapefile data.
+
+```{r unzip}
+unzip("precinct.zip", overwrite = TRUE)
+```
+
+### Reading in and preparing the data
+
+I first read in the shapefile containing adjusted 2010 populations for
+all Maryland precincts, and keep only the precinct data and geometry
+for Howard County.
+
+For some reason the shapefile population data omits the adjusted population
+values for multiracial people, so I create a new variable `ADJ_MUL` calculated
+as the difference between the total adjusted population value and the adjusted
+population values for the other racial categories.
+
+```{r precinct_sf}
+precinct_sf <- st_read("Precinct2010_83NadMeters.shp") %>%
+  filter(COUNTY == "24027") %>%
+  mutate(ADJ_MULTI = ADJ_POPULA -
+           (ADJ_WHITE + ADJ_BLACK + ADJ_ASIAN +
+              ADJ_AMINDI + ADJ_HAWAII + ADJ_OTHER))
+```
+
+I then read in the 2010 election data for Howard County, and keep only the
+Democratic and Republican totals for the county executive race and
+the five county council races. (Note that there were competitive races for
+all five council districts in 2010.)
+
+In order to prepare the data for merging with the shapefile data, I combine
+the fields for the office and for the party into a single field, get rid of
+all the unneeded fields, and then use `pivot_wider()` to convert the different
+rows containing vote totals for the county executive and county council races
+into different columns.
+
+```{r hc_election}
+election_2010 <- read_csv("election_2010.csv") %>%
+  filter(`Office Name` == "County Executive" |
+           `Office Name` == "County Council") %>%
+  filter(Party == "DEM" | Party == "REP") %>%
+  mutate(VTD = paste("24027",
+                     substr(`Election District`, 2, 3),
+                     "-",
+                     `Election Precinct`,
+                     sep = "")) %>%
+  mutate(`Office by Party` = paste(`Office Name`, "-", `Party`, sep = "")) %>%
+  select(VTD, `Office by Party`, `Election Night Votes`) %>%
+  pivot_wider(names_from = `Office by Party`,
+              values_from = `Election Night Votes`,
+              values_fill = 0)
+```
+
+I join the two tables `precinct_sf` and `election_2010` using their
+common field `VTD` to create a new shapefile containing precinct boundaries,
+(adjusted) populations (broken down by race), and 2010 election results for
+county executive and county council.
+
+```{r redistricting_sf}
+redistricting_sf <- inner_join(precinct_sf, election_2010, by = "VTD")
+```
+
+Finally, I write the shapefile out to disk, to be used as input to the
+AutoRedistrict application.
+
+```{r st_write}
+st_write(redistricting_sf, "redistricting.shp", append = FALSE)
+```
+
+## Appendix
+
+### Caveats
+
+The election data omits votes cast by third parties or for write-in candidates.
+In practice the number of these votes is very small, and should not affect the
+redistricting results.
+
+### References
+
+Data derived from the 2010 census and used for Maryland redistricting is
+available from the "[Precinct Population Count and Maps][ppc]" page
+published by the Maryland Department of Planning. The data is combined with
+precinct boundaries to create the [2010 precinct shapefile][ps] (distributed
+as a zip file).
+
+[ppc]: https://planning.maryland.gov/Redistricting/Pages/2010/precinct.aspx
+[ps]: https://planning.maryland.gov/Redistricting/Documents/2010zip/precinct2010.zip
+
+Precinct-level results for the Howard County 2010 general election are
+available from the "[Data Files for the 2010 Gubernatorial Election
+Results][df2010]" page published by the Maryland Board of Elections. This
+analysis uses the [precinct results for Howard County][prhc].
+
+[df2010]: https://elections.maryland.gov/elections/2010/election_data/index.html
+[prhc]: https://elections.maryland.gov/elections/2010/election_data/Howard_By_Precinct_2010_General.csv
+
+### Suggestions for future work
+
+This analysis needs to be updated as soon as the data from the 2020 census is
+released by Maryland Department of Planning.
+
+### Environment
+
+I used the following R environment in doing the analysis above:
+
+```{r}
+sessionInfo()
+```
+
+### Source code
+
+You can find the source code for this analysis and others at my
+[hocodata public code repository][hd].  This document and its source
+code are available for unrestricted use, distribution and modification
+under the terms of the [Creative Commons CC0 1.0 Universal (CC0 1.0)
+Public Domain Dedication][cc0].  Stated more simply, you’re free to do
+whatever you’d like with it.
+
+[hd]: https://gitlab.com/frankhecker/hocodata
+[cc0]: https://creativecommons.org/publicdomain/zero/1.0/

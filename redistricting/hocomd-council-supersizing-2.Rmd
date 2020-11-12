@@ -1,0 +1,205 @@
+---
+title: "Howard County Council Supersizing, Part 2"
+author: "Frank Hecker"
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+output:
+  html_document:
+    fig_width: 8
+    fig_height: 5
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+In this document I display a map of the Howard County Council districts
+produced by running the AutoRedistrict application to create three council
+districts electing five members per district using ranked choice voting.
+
+For those readers unfamiliar with the [R statistical software][r] and
+the additional [Tidyverse software][tv] I use to manipulate and plot
+data, I’ve included some additional explanation of various steps.  For
+more information check out the various [ways to learn more about the
+Tidyverse][learn].
+
+[r]: https://www.r-project.org/
+[tv]: https://www.tidyverse.org/
+[learn]: https://www.tidyverse.org/learn/
+
+## Setup and data preparation
+
+### Libraries
+
+I use the following packages for the following purposes:
+
+* tidyverse: do general data manipulation.
+* sf: manipulate geospatial data.
+* tigris: get data on roads.
+* tools. compute MD5 checksums.
+
+```{r libraries, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(sf)
+library(tigris)
+library(tools)
+```
+
+### Data sources
+
+I use data from the following sources; see the References section
+below for more information:
+
+* Boundaries for Howard County precincts are from the shapefile produced
+  by part 1 of this analysis. These are the precincts used in the 2010
+  general election for county council.
+* Assignment of precincts to new districts is from the AutoRedistrict
+  program.
+
+### Reading in and preparing the data
+
+I first read in the shapefile containing Howard County precinct boundaries
+and related data, as produced by part 1 of this analysis.
+
+```{r redistricting_sf}
+redistricting_sf <- st_read("redistricting.shp")
+```
+I then read in the data on new districts produced by the AutoRedistrict
+application. To eliminate a potential conflict with the shapefile data I
+rename the `VTD` field to `District`. I retain only the `District` field and
+the `VTD_1` field (which contains the precinct designator, e.g., "01-001"),
+since all the other fields are duplicated in the shapefile.
+
+```{r new_districts}
+new_districts_df <- read_csv("autoredistrict-results-2010.csv") %>%
+  mutate(District = as.factor(VTD)) %>%
+  select(District, VTD_1)
+```
+To help orient readers as to the locations of the census block groups, I also want any maps generated to also display major roads in Howard County that correspond in whole or in part to census block group boundaries. I use the tigris function roads() to return geometry for all Howard County roads.
+
+Because I don’t need or want to display each and every Howard County road, I use the RTTYP and FULLNAME variables to filter the results to retain only major roads (interstate and U.S. highways) and significant minor roads (Maryland state routes and roads with “Parkway” in their names). I store the geometry for each in separate variables, so that I can plot them at different widths.
+
+```{r roads}
+all_roads <- roads(state = "MD", county = "Howard County", class = "sf", progress_bar = FALSE)
+
+major_roads_geo <- all_roads %>%
+  filter(RTTYP %in% c("I", "U")) %>%
+  st_geometry()
+
+minor_roads_geo <- all_roads %>%
+  filter(RTTYP == "S" | str_detect(FULLNAME, "Pkwy")) %>%
+  st_geometry()
+```
+
+### Analysis
+
+```{r table}
+district_data <- redistricting_sf %>%
+  left_join(new_districts_df, by = "VTD_1") %>%
+  st_drop_geometry()
+```
+
+Compute the racial breakdowns for each district.
+
+```{r racial}
+racial_breakdown <- district_data %>%
+  group_by(District) %>%
+  summarize(ADJ_POP = sum(ADJ_POP),
+            ADJ_WHI = sum(ADJ_WHI),
+            ADJ_BLA = sum(ADJ_BLA),
+            ADJ_ASI = sum(ADJ_ASI),
+            ADJ_OTH = sum(ADJ_OTH),
+            ADJ_MUL = sum(ADJ_MUL)) %>%
+  mutate(White_Pct = round(100 * ADJ_WHI / ADJ_POP),
+         Black_Pct = round(100 * ADJ_BLA / ADJ_POP),
+         Asian_Pct = round(100 * ADJ_ASI / ADJ_POP),
+         Other_Pct = round(100 * ADJ_OTH / ADJ_POP),
+         Multi_Pct = round(100 * ADJ_MUL / ADJ_POP)) %>%
+  select(District, White_Pct, Black_Pct, Asian_Pct, Other_Pct, Multi_Pct)
+racial_breakdown
+```
+
+Compute the party breakdown for each district.
+
+```{r party}
+party_breakdown <- district_data %>%
+  mutate(Votes = CEx.DEM + CEx.REP + CCn.DEM + CCn.REP,
+         Dem_Votes = CEx.DEM + CCn.DEM,
+         Rep_Votes = CEx.REP + CCn.REP) %>%
+  group_by(District) %>%
+  summarize(Votes = sum(Votes),
+            Dem_Votes = sum(Dem_Votes),
+            Rep_Votes = sum(Rep_Votes)) %>%
+  mutate(Dem_Pct = round(100 * Dem_Votes / Votes),
+         Rep_Pct = round(100 * Rep_Votes / Votes)) %>%
+  select(District, Dem_Pct, Rep_Pct)
+party_breakdown
+```
+
+I plot the new districts along with the major (and some minor) roads
+to show how the new districts would relate to existing communities in
+Howard County.
+
+Although this was not specified explicitly as part of the auto-redistricting
+process, the new districts very nicely divide the county into three
+"communities of interest":
+
+* Core Columbia and southeastern Howard, including Savage and North Laurel.
+* Ellicott City and northeastern Howard, including Elkridge.
+* Western Howard, including River Hill.
+
+```{r plot}
+redistricting_sf %>%
+  left_join(new_districts_df, by = "VTD_1") %>%
+  ggplot(aes(fill = District, geometry = geometry)) +
+  geom_sf(size = 0) +
+  geom_sf(data = major_roads_geo, color = "white", size = 1.0, fill = NA) +
+  geom_sf(data = minor_roads_geo, color = "white", size = 0.5, fill = NA) +
+  labs(title="Districts for 15-Member Council with Ranked Choice Voting",
+       subtitle = "Automatically Generated using 2010 Census and Election Data",
+       caption = paste0(
+         "Data sources:",
+         "\n  Maryland Department of Planning",
+         "\n  Maryland Board of Elections",
+         "\nCreated using the AutoRedistrict application and tidyverse R package"
+       )
+  ) +
+  theme(plot.caption = element_text(margin = margin(t = 15), hjust = 0)) +
+  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+  theme(panel.background = element_blank())
+```
+
+## Appendix
+
+### Caveats
+
+To be written.
+
+### References
+
+To be written.
+
+### Suggestions for others
+
+To be written.
+
+### Environment
+
+I used the following R environment in doing the analysis above:
+
+```{r}
+sessionInfo()
+```
+
+### Source code
+
+You can find the source code for this analysis and others at my
+[hocodata public code repository][hd].  This document and its source
+code are available for unrestricted use, distribution and modification
+under the terms of the [Creative Commons CC0 1.0 Universal (CC0 1.0)
+Public Domain Dedication][cc0].  Stated more simply, you’re free to do
+whatever you’d like with it.
+
+[hd]: https://gitlab.com/frankhecker/hocodata
+[cc0]: https://creativecommons.org/publicdomain/zero/1.0/
