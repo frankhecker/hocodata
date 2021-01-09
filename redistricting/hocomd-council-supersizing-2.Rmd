@@ -120,6 +120,33 @@ racial_breakdown <- district_data %>%
 racial_breakdown
 ```
 
+I plot the racial breakdowns by district.
+
+```{r ggplot_racial}
+racial_breakdown %>%
+  mutate(Black_Multi_Pct = Black_Pct + Multi_Pct, Asian_Other_Pct = Asian_Pct + Other_Pct) %>%
+  select(-Black_Pct, -Asian_Pct, -Multi_Pct, -Other_Pct) %>%
+  gather(key = "Race", value = Vote_Pct, White_Pct:Asian_Other_Pct) %>%
+  ggplot(mapping = aes(x = District, y = Vote_Pct, fill = Race)) +
+  geom_col(position = "dodge") +
+  geom_hline(yintercept = quota, color = "gray") +
+  geom_hline(yintercept = 2 * quota, color = "gray") +
+  geom_hline(yintercept = 3 * quota, color = "gray") +
+  geom_hline(yintercept = 4 * quota, color = "gray") +
+  labs(title="Estimated County Council Vote Share By Race",
+       subtitle = "Automatically Generated using 2010 Census and Election Data",
+       caption = paste0(
+         "Data sources:",
+         "\n  Maryland Department of Planning",
+         "\n  Maryland Board of Elections",
+         "\nCreated using the AutoRedistrict application and tidyverse R package"
+       )
+  ) +
+  ylab("Estimated Vote Share (%)") +
+  theme(plot.caption = element_text(margin = margin(t = 15), hjust = 0)) +
+  theme_bw()
+```
+
 Compute the party breakdown for each district.
 
 ```{r party}
@@ -135,6 +162,32 @@ party_breakdown <- district_data %>%
          Rep_Pct = round(100 * Rep_Votes / Votes)) %>%
   select(District, Dem_Pct, Rep_Pct)
 party_breakdown
+```
+
+I plot the party breakdowns by district.
+
+```{r ggplot_party}
+party_breakdown %>%
+  gather(key = "Party", value = Vote_Pct, Dem_Pct:Rep_Pct) %>%
+  mutate(Party = str_sub(Party, 1, 3)) %>%
+  ggplot(mapping = aes(x = District, y = Vote_Pct, fill = Party)) +
+  geom_col(position = "dodge") +
+  geom_hline(yintercept = quota, color = "gray") +
+  geom_hline(yintercept = 2 * quota, color = "gray") +
+  geom_hline(yintercept = 3 * quota, color = "gray") +
+  geom_hline(yintercept = 4 * quota, color = "gray") +
+  labs(title="Estimated Party Vote Share Per Council District",
+       subtitle = "Automatically Generated using 2010 Census and Election Data",
+       caption = paste0(
+         "Data sources:",
+         "\n  Maryland Department of Planning",
+         "\n  Maryland Board of Elections",
+         "\nCreated using the AutoRedistrict application and tidyverse R package"
+       )
+  ) +
+  ylab("Estimated Vote Share (%)") +
+  theme(plot.caption = element_text(margin = margin(t = 15), hjust = 0)) +
+  theme_bw()
 ```
 
 I plot the new districts along with the major (and some minor) roads
