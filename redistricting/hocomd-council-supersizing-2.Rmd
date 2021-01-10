@@ -17,6 +17,7 @@ knitr::opts_chunk$set(echo = TRUE)
 In this document I display a map of the Howard County Council districts
 produced by running the AutoRedistrict application to create three council
 districts electing five members per district using ranked choice voting.
+I also show racial and (estimated) party vote share by district.
 
 For those readers unfamiliar with the [R statistical software][r] and
 the additional [Tidyverse software][tv] I use to manipulate and plot
@@ -76,7 +77,8 @@ new_districts_df <- read_csv("autoredistrict-results-2010.csv") %>%
   mutate(District = as.factor(VTD)) %>%
   select(District, VTD_1)
 ```
-To help orient readers as to the locations of the census block groups, I also want any maps generated to also display major roads in Howard County that correspond in whole or in part to census block group boundaries. I use the tigris function roads() to return geometry for all Howard County roads.
+To help orient readers as to the locations of the district boundaries, I also want any maps generated to also display major roads in Howard County that correspond in whole or in part to
+district or precinct boundaries. I use the tigris function roads() to return geometry for all Howard County roads.
 
 Because I don’t need or want to display each and every Howard County road, I use the RTTYP and FULLNAME variables to filter the results to retain only major roads (interstate and U.S. highways) and significant minor roads (Maryland state routes and roads with “Parkway” in their names). I store the geometry for each in separate variables, so that I can plot them at different widths.
 
@@ -94,13 +96,18 @@ minor_roads_geo <- all_roads %>%
 
 ### Analysis
 
+The precinct-level data in `redistricting_sf` contains population figures
+by race. I combine the precinct-level data (in `redistricting_sf`) with the assignment
+of precincts to council districts produced by the AutoRedistrict application
+(in `new_districts_sf`), and then drop the geometry for the shapefile boundaries.
+
 ```{r table}
 district_data <- redistricting_sf %>%
   left_join(new_districts_df, by = "VTD_1") %>%
   st_drop_geometry()
 ```
 
-Compute the racial breakdowns for each district.
+I compute the racial breakdowns for each district.
 
 ```{r racial}
 racial_breakdown <- district_data %>%
@@ -111,29 +118,32 @@ racial_breakdown <- district_data %>%
             ADJ_ASI = sum(ADJ_ASI),
             ADJ_OTH = sum(ADJ_OTH),
             ADJ_MUL = sum(ADJ_MUL)) %>%
-  mutate(White_Pct = round(100 * ADJ_WHI / ADJ_POP),
-         Black_Pct = round(100 * ADJ_BLA / ADJ_POP),
-         Asian_Pct = round(100 * ADJ_ASI / ADJ_POP),
-         Other_Pct = round(100 * ADJ_OTH / ADJ_POP),
-         Multi_Pct = round(100 * ADJ_MUL / ADJ_POP)) %>%
-  select(District, White_Pct, Black_Pct, Asian_Pct, Other_Pct, Multi_Pct)
-racial_breakdown
+  mutate(White = round(100 * ADJ_WHI / ADJ_POP),
+         Black = round(100 * ADJ_BLA / ADJ_POP),
+         Asian = round(100 * ADJ_ASI / ADJ_POP),
+         Other = round(100 * ADJ_OTH / ADJ_POP),
+         Multiracial = round(100 * ADJ_MUL / ADJ_POP)) %>%
+  select(District, White, Black, Asian, Other, Multiracial)
 ```
 
-I plot the racial breakdowns by district.
+I plot the racial breakdown by district.
 
 ```{r ggplot_racial}
+palette <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2")
+
+quota = 100 / 6
+
 racial_breakdown %>%
-  mutate(Black_Multi_Pct = Black_Pct + Multi_Pct, Asian_Other_Pct = Asian_Pct + Other_Pct) %>%
-  select(-Black_Pct, -Asian_Pct, -Multi_Pct, -Other_Pct) %>%
-  gather(key = "Race", value = Vote_Pct, White_Pct:Asian_Other_Pct) %>%
+  gather(key = "Race", value = Vote_Pct, White:Multiracial) %>%
+  mutate(Race = fct_relevel(Race, c("White", "Black", "Asian", "Other", "Multiracial"))) %>%
   ggplot(mapping = aes(x = District, y = Vote_Pct, fill = Race)) +
   geom_col(position = "dodge") +
-  geom_hline(yintercept = quota, color = "gray") +
-  geom_hline(yintercept = 2 * quota, color = "gray") +
-  geom_hline(yintercept = 3 * quota, color = "gray") +
-  geom_hline(yintercept = 4 * quota, color = "gray") +
-  labs(title="Estimated County Council Vote Share By Race",
+  scale_fill_manual(values = palette) +
+  geom_hline(mapping = aes(yintercept = quota), color = "gray", linetype = "dashed") +
+  geom_hline(mapping = aes(yintercept = 2 * quota), color = "gray", linetype = "dashed") +
+  geom_hline(mapping = aes(yintercept = 3 * quota), color = "gray", linetype = "dashed") +
+  geom_hline(mapping = aes(yintercept = 4 * quota), color = "gray", linetype = "dashed") +
+  labs(title="County Council District Population Percentage By Race",
        subtitle = "Automatically Generated using 2010 Census and Election Data",
        caption = paste0(
          "Data sources:",
@@ -142,7 +152,7 @@ racial_breakdown %>%
          "\nCreated using the AutoRedistrict application and tidyverse R package"
        )
   ) +
-  ylab("Estimated Vote Share (%)") +
+  ylab("Population (%)") +
   theme(plot.caption = element_text(margin = margin(t = 15), hjust = 0)) +
   theme_bw()
 ```
@@ -158,25 +168,28 @@ party_breakdown <- district_data %>%
   summarize(Votes = sum(Votes),
             Dem_Votes = sum(Dem_Votes),
             Rep_Votes = sum(Rep_Votes)) %>%
-  mutate(Dem_Pct = round(100 * Dem_Votes / Votes),
-         Rep_Pct = round(100 * Rep_Votes / Votes)) %>%
-  select(District, Dem_Pct, Rep_Pct)
-party_breakdown
+  mutate(Democratic = round(100 * Dem_Votes / Votes),
+         Republican = round(100 * Rep_Votes / Votes)) %>%
+  select(District, Democratic, Republican)
 ```
 
 I plot the party breakdowns by district.
 
 ```{r ggplot_party}
+palette <- c("#0072B2", "#D55E00")
+
 party_breakdown %>%
-  gather(key = "Party", value = Vote_Pct, Dem_Pct:Rep_Pct) %>%
-  mutate(Party = str_sub(Party, 1, 3)) %>%
+  gather(key = "Party", value = Vote_Pct, Democratic:Republican) %>%
+  mutate(Party = fct_relevel(Party, c("Democratic", "Republican"))) %>%
   ggplot(mapping = aes(x = District, y = Vote_Pct, fill = Party)) +
   geom_col(position = "dodge") +
-  geom_hline(yintercept = quota, color = "gray") +
-  geom_hline(yintercept = 2 * quota, color = "gray") +
-  geom_hline(yintercept = 3 * quota, color = "gray") +
-  geom_hline(yintercept = 4 * quota, color = "gray") +
-  labs(title="Estimated Party Vote Share Per Council District",
+  scale_fill_manual(values = palette) +
+  geom_hline(mapping = aes(yintercept = quota), color = "gray", linetype = "dashed") +
+  geom_hline(mapping = aes(yintercept = 2 * quota), color = "gray", linetype = "dashed") +
+  geom_hline(mapping = aes(yintercept = 3 * quota), color = "gray", linetype = "dashed") +
+  geom_hline(mapping = aes(yintercept = 4 * quota), color = "gray", linetype = "dashed") +
+  ylab("Estimated Vote (%)") +
+  labs(title="County Council District Estimated Vote by Party",
        subtitle = "Automatically Generated using 2010 Census and Election Data",
        caption = paste0(
          "Data sources:",
@@ -185,9 +198,8 @@ party_breakdown %>%
          "\nCreated using the AutoRedistrict application and tidyverse R package"
        )
   ) +
-  ylab("Estimated Vote Share (%)") +
-  theme(plot.caption = element_text(margin = margin(t = 15), hjust = 0)) +
-  theme_bw()
+  theme_bw() +
+  theme(plot.caption = element_text(margin = margin(t = 15), hjust = 0))
 ```
 
 I plot the new districts along with the major (and some minor) roads
@@ -203,10 +215,13 @@ process, the new districts very nicely divide the county into three
 * Western Howard, including River Hill.
 
 ```{r plot}
+palette <- c("#E69F00", "#56B4E9", "#009E73")
+
 redistricting_sf %>%
   left_join(new_districts_df, by = "VTD_1") %>%
   ggplot(aes(fill = District, geometry = geometry)) +
   geom_sf(size = 0) +
+  scale_fill_manual(values = palette) +
   geom_sf(data = major_roads_geo, color = "white", size = 1.0, fill = NA) +
   geom_sf(data = minor_roads_geo, color = "white", size = 0.5, fill = NA) +
   labs(title="Districts for 15-Member Council with Ranked Choice Voting",
