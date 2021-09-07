@@ -1,5 +1,5 @@
 ---
-title: "Howard County Council Supersizing, Part 1"
+title: "Howard County Council Expansion, Part 1"
 author: "Frank Hecker"
 date: "`r format(Sys.time(), '%Y-%m-%d')`"
 output:
@@ -14,9 +14,18 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Introduction
 
-In this document I create a shapefile to be used for Howard County Council
-redistricting calculations. The shapefile combines precinct boundaries,
-precinct populations (including breakdowns by race), and election results.
+In this document I create a shapefile to be used for Howard County
+Council redistricting calculations. The shapefile combines precinct
+boundaries, precinct populations (including breakdowns by race and
+ethnicity), and election results for local races.
+
+Redistricting efforts sponsored by political parties (e.g., in
+attempts to gerrymander districts) use information that is not fully
+public, including voter registration files kept by election boards. My
+goal here is rather to do redistricting calculations using only data
+and software that are freely available to the general public. That
+allows others to check my work for possible errors and omissions, and
+to build on it for their own purposes should they wish to do so.
 
 For those readers unfamiliar with the [R statistical software][r] and
 the additional [Tidyverse software][tv] I use to manipulate and plot
@@ -32,18 +41,20 @@ Tidyverse][learn].
 
 ### Libraries
 
-I use the following packages for the following purposes:
+I use the following R packages for the following purposes:
 
 * tidyverse: do general data manipulation.
-* readxl: read Microsoft Excel spreadsheets.
 * sf: manipulate geospatial data.
 * tools. compute MD5 checksums.
+* gghighlight. customize graphs.
+* scales. customize graphs.
 
 ```{r libraries, message=FALSE, warning=FALSE}
 library(tidyverse)
-library(readxl)
 library(sf)
 library(tools)
+library(gghighlight)
+library(scales, warn.conflicts = FALSE)
 ```
 
 ### Data sources
@@ -51,141 +62,962 @@ library(tools)
 I use data from the following sources; see the References section
 below for more information:
 
-* Boundaries and populations for Howard County precincts are from the Maryland
-  Department of Planning data used for Congressional and Maryland legislative
-  redistricting. I use the data from the 2010 census since the data for 2020
-  are not yet available.
-* Election results for Howard County precincts are from the Maryland Board of
-  Elections. I use the results from the 2010 general election since it
-  featured local Howard County races (including for county executive and
-  county council) and the precinct number and boundaries match the 2010
-  redistricting data from the Maryland Department of Planning.
+* Population data for Howard County precincts are from the Maryland
+  Department of Planning data used for Congressional redistricting.
+* Boundaries for Howard County precincts are from the Howard County
+  GIS Division.
+* Election results for Howard County as a whole and for individual
+  precincts are from the Maryland Board of Elections for the 2018
+  general election, the most recent election to feature local Howard
+  County races, including for county executive and county council.
+* Information on numbers of registered voters and voter turnout for
+  the 2018 general election is also from the Maryland Board of
+  Elections.
+* Information on the size and structure of Maryland county and city
+  councils and boards of county commissioners is from the Maryland
+  Manual On-Line published by the Maryland State Archives.
+
+The precinct geographic boundaries are consistent between these
+various sources, as are the precinct designations (except for minor
+differences in formatting).
 
 ### Downloading the data
 
 I download the following files:
 
-* Precinct shapefile from the 2010 Maryland redistricting effort. This
-  shapefile also contains unadjusted and adjusted population figures
-  broken down by race.
-* Howard County 2010 general election results for county races.
+* `Adjusted2020Blockcsv.zip`. A CSV file containing block-level
+  population data from the 2020 Maryland redistricting effort.
+* `Voting_Precincts.geojson`. A GeoJSON-format file containing Howard
+  County precinct boundaries.
+* `Howard_County_2018_General.csv`. A CSV file containing overall
+  Howard County 2018 general election results.
+* `Howard_By_Precinct_2018_General.csv`. A CSV file containing Howard
+  County 2018 general election results by precinct, for election day
+  only.
+* `Official_by_Party_and_Precinct.csv`. A CSV file containing
+  turnout-related statistics for the 2018 general election results by
+  precinct, for both election day voting and other methods of voting,
+  including early voting.
 
 ```{r download}
-download.file("https://planning.maryland.gov/Redistricting/Documents/2010zip/precinct2010.zip",
-              "precinct.zip",
-              method = "curl")
-download.file("https://elections.maryland.gov/elections/2010/election_data/Howard_By_Precinct_2010_General.csv",
-              "election_2010.csv",
-              method = "curl")
+download.file("https://apps.planning.maryland.gov/redistricting/data/Adjusted2020Blockcsv.zip",
+              "Adjusted2020Blockcsv.zip")
+
+download.file("https://data.howardcountymd.gov/geoserver/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=general:Voting_Precincts&outputFormat=application/json",
+              "Voting_Precincts.geojson")
+
+download.file("https://elections.maryland.gov/elections/2018/election_data/Howard_County_2018_General.csv", "Howard_County_2018_General.csv")
+
+download.file("https://elections.maryland.gov/elections/2018/election_data/Howard_By_Precinct_2018_General.csv",
+              "Howard_By_Precinct_2018_General.csv")
+
+download.file("https://elections.maryland.gov/elections/2018/turnout/general/Official%20by%20Party%20and%20Precinct.csv",
+              "Official_by_Party_and_Precinct.csv")
 ```
-I check the MD5 value for the files, and stop if the contents are not what
-are expected.
+
+I check the MD5 hash values for the files, and stop if the contents are not
+what are expected.
 
 ```{r md5_check}
-stopifnot(md5sum("precinct.zip") == "d620e6d5e26e56052b02da2588e4835a")
-stopifnot(md5sum("election_2010.csv") == "bd071b938df5a3c5080c017cb5993675")
+stopifnot(md5sum("Voting_Precincts.geojson") == "5c732804496e978ff9d0bead4d49d23a")
+stopifnot(md5sum("Adjusted2020Blockcsv.zip") == "35cf92e410897f8a171370e7effc8205")
+stopifnot(md5sum("Howard_County_2018_General.csv") == "22f086ede73639a6291fd16d51326c22")
+stopifnot(md5sum("Howard_By_Precinct_2018_General.csv") == "5916ceb054fa2035ca6e17557d883d51")
+stopifnot(md5sum("Official_by_Party_and_Precinct.csv") == "e97de27d20f077e1327bd7c39c81938b")
 ```
 
-I unzip the precinct shapefile data.
+I unzip the CSV file with census block-level population data.
 
 ```{r unzip}
-unzip("precinct.zip", overwrite = TRUE)
+unzip("Adjusted2020Blockcsv.zip", overwrite = TRUE)
 ```
 
 ### Reading in and preparing the data
 
-I first read in the shapefile containing adjusted 2010 populations for
-all Maryland precincts, and keep only the precinct data and geometry
-for Howard County.
+I first read in the CSV file containing adjusted 2018 populations for
+all Maryland census blocks, and store that data in the data table
+`md_pop_by_block_tb`. I rename the `VTD` column to `Precinct` to make
+the code below more clear. (“VTD” stands for “Voting District”.)
 
-For some reason the shapefile population data omits the adjusted population
-values for multiracial people, so I create a new variable `ADJ_MUL` calculated
-as the difference between the total adjusted population value and the adjusted
-population values for the other racial categories.
+NOTE: The first two columns of the data, the census block number and
+block group number, have invalid values, possibly because someone
+somewhere made a mistake and let Excel convert the long numeric values
+in those columns to scientific notation. The equivalent Excel file has
+the same problem, albeit only on both the census block
+column. Fortunately I don’t need either of those values for my
+purposes, so I can ignore this error.
 
-```{r precinct_sf}
-precinct_sf <- st_read("Precinct2010_83NadMeters.shp") %>%
-  filter(COUNTY == "24027") %>%
-  mutate(ADJ_MULTI = ADJ_POPULA -
-           (ADJ_WHITE + ADJ_BLACK + ADJ_ASIAN +
-              ADJ_AMINDI + ADJ_HAWAII + ADJ_OTHER))
+```{r md_pop_by_block_tb}
+md_pop_by_block_tb <- read_csv("Blocks.csv", show_col_types = FALSE) %>%
+  rename(Precinct = VTD)
 ```
 
-I then read in the 2010 election data for Howard County, and keep only the
-Democratic and Republican totals for the county executive race and
-the five county council races. (Note that there were competitive races for
-all five council districts in 2010.)
+I next read in the GeoJSON data for the Howard County precinct
+boundaries and store that data in a geospatial data table
+`precinct_sf`. I create a variable `Precinct` with a format matching
+that of the variable of the same name in the population data just
+loaded, and a variable `District` with a format matching that used for
+county council districts in the election results.
 
-In order to prepare the data for merging with the shapefile data, I combine
-the fields for the office and for the party into a single field, get rid of
-all the unneeded fields, and then use `pivot_wider()` to convert the different
-rows containing vote totals for the county executive and county council races
-into different columns.
+(The chosen format for precincts is _sscccpp-ppp_, where _ss_ is “24”,
+the two-digit [FIPS code][fc] for the state of Maryland, _ccc_ is the
+3-digit code for each county within the state, and _pp-ppp_ is the
+designator for a precinct within a county. The chosen format for
+council districts is a three-digit number, to match the format used in
+the election results.)
 
-```{r hc_election}
-election_2010 <- read_csv("election_2010.csv") %>%
-  filter(`Office Name` == "County Executive" |
-           `Office Name` == "County Council") %>%
-  filter(Party == "DEM" | Party == "REP") %>%
-  mutate(VTD = paste("24027",
-                     substr(`Election District`, 2, 3),
-                     "-",
-                     `Election Precinct`,
-                     sep = "")) %>%
+[fc]: https://en.wikipedia.org/wiki/Federal_Information_Processing_Standard_state_code
+
+I don’t need any of the other data in the GeoJSON file other than the
+precinct and council district, so I retain only the `Precinct` and
+`District` variables, along with the boundary geometry data (which is
+automatically retained).
+
+I also create a data table `precinct_district_tb` to map each precinct
+to its corresponding council district. This is essentially the
+`precinct_sf` table with the precinct boundary geometry data removed.
+
+```{r precinct_sf}
+precinct_sf <- st_read("Voting_Precincts.geojson") %>%
+  mutate(Precinct = paste("240270",
+                          substr(PRECINCT20, 1, 1),
+                          "-0",
+                          substr(PRECINCT20, 3, 5),
+                          sep = ""),
+         District = paste("00", CODISTRICT, sep = "")) %>%
+  select(Precinct, District)
+
+precinct_district_tb <- precinct_sf %>% 
+  st_drop_geometry()
+```
+
+I then read in the 2018 election data for Howard County. I keep only
+the results for the Democratic and Republican candidates in the county
+executive race and the five county council races. The table
+`all_votes_by_candidate_tb` accounts for all votes no matter how
+cast. The table `en_votes_by_precinct_tb` contains only votes cast on
+election day and recorded on election night. (Maryland does not assign
+votes to precincts when they are cast by mail or during early voting
+periods.)
+
+I create a new variable `Precinct` to designate each precinct using
+the format described above. I also join the table with the
+`precinct_district_tb` table created above, in order to add a new
+`District` variable for all precinct-level results. (The `Office
+District` variable cannot be used for this, since it has missing
+values for county-wide races like that for county executive.)
+
+```{r votes}
+all_votes_by_candidate_tb <- read_csv("Howard_County_2018_General.csv",
+                           show_col_types = FALSE) %>%
+  filter(`Office Name` %in% c("County Executive", "County Council"),
+         Party %in% c("DEM", "REP"))
+
+en_votes_by_precinct_tb <- read_csv("Howard_By_Precinct_2018_General.csv",
+                                 show_col_types = FALSE) %>%
+  filter(`Office Name` %in% c("County Executive", "County Council"),
+         Party %in% c("DEM", "REP")) %>%
+  mutate(Precinct = paste("24027",
+                          substr(`Election District`, 2, 3),
+                          "-",
+                          substr(`Election Precinct`, 1, 3),
+                          sep = "")) %>%
+  left_join(precinct_district_tb, by = "Precinct")
+```
+
+I read in the official data on turnout in the 2018 general election by
+precinct. Note that unlike the precinct-level election results, the
+precinct-level turnout statistics account for all votes cast no matter
+the method.
+
+I keep only the data for Howard County (ignoring votes for which the
+precinct cannot be determined), create a variable `Precinct` (as
+distinct from the original variable `PRECINCT`) formatted to match
+that of other data tables, and a variable `TOTAL_VOTES` to hold the
+total number of votes cast in a given precinct.
+
+```{r turnout_by_precinct_tb}
+turnout_by_precinct_tb <- read_csv("Official_by_Party_and_Precinct.csv",
+                                   show_col_types = FALSE) %>%
+  filter(LBE == "Howard",
+         PRECINCT != "Unable to Determine") %>%
+  mutate(Precinct = paste("24027", substr(PRECINCT, 2, 7), sep = ""),
+         TOTAL_VOTES = POLLS + EARLY_VOING + ABSENTEE + PROVISIONAL)
+```
+
+Finally, for each Maryland county I list the number of county council
+members (for charter counties), county commissioners (for non-charter
+counties), or city council members (for Baltimore city).
+
+```{r md_council_structure_tb}
+md_council_structure_tb <- tribble(
+  ~County, ~Name, ~Type, ~At_Large, ~By_District,
+  24001, "Allegany County", "Commissioners", 0, 3,
+  24003, "Anne Arundel County", "Council", 0, 7,
+  24005, "Baltimore County", "Council", 0, 7,
+  24009, "Calvert County", "Commissioners", 2, 3,
+  24011, "Caroline County", "Commssioners", 3, 0,
+  24013, "Carroll County", "Commissioners", 0, 5,
+  24015, "Cecil County", "Council", 0, 5,
+  24017, "Charles County", "Commissioners", 1, 4,
+  24019, "Dorchester County", "Council", 0, 5,
+  24021, "Frederick County", "Council", 2, 5,
+  24023, "Garrett County", "Commissioners", 0, 3,
+  24025, "Harford County", "Council", 1, 6,
+  24027, "Howard County", "Council", 0, 5,
+  24029, "Kent County", "Commissioners", 3, 0,
+  24031, "Montgomery County", "Council", 4, 5,
+  24033, "Prince George’s County", "Council", 2, 9,
+  24035, "Queen Anne’s County", "Commissioners", 1, 4,
+  24037, "St. Mary’s County", "Commissioners", 1, 4,
+  24039, "Somerset County", "Commissioners", 0, 5,
+  24041, "Talbot County", "Council", 5, 0,
+  24043, "Washington County", "Commissioners", 5, 0,
+  24045, "Wicomico County", "Council", 2, 5,
+  24047, "Worcester County", "Commissioners", 0, 7,
+  24510, "Baltimore city", "Council", 1, 14
+)
+```
+
+## Which data should be used for redistricting?
+
+My goal is doing this redistricting exercise is to be able to draw
+Howard County Council district boundaries in a way that promotes
+overall fairness between the two dominant political parties and their
+voters and among the various racial and ethnic groups in the county.
+
+However in doing so there are various questions I need to resolve:
+
+- How many council members should there be?
+- At what level should redistricting be done? Should calculations be
+  performed at the census block level (as the available data might be
+  seen as allowing) and new precinct lines drawn based on that? Or
+  should redistricting calculations be done at the precinct level,
+  with precincts simply moved between council districts but otherwise
+  kept as is?
+- Which races and ethnic groups should be considered in redistricting?
+  All of them identified in the census data? Or only a subset? If the
+  latter, should we include multiracial people as a distinct group, or
+  try to lump them in with one or more other groups?
+- How should the relative strengths of the two main political parties
+  be calculated? Based on registration statistics? Election results?
+  And if election results are to be used, exactly which election(s)?
+- In drawing the actual council district lines, which factors should
+  be given more weight? As but one example, should we put more weight
+  on having more compact (i.e., not oddly-shaped) districts, even if
+  that conflicts with having district populations be as equal as
+  possible?
+
+There are also various obstacles I face:
+
+- The 2020 census block-level data is not necessarily accurate, since
+  the US Census Bureau deliberately introduced noise into the data in
+  an attempt to provide enhanced privacy for personal demographic
+  information.
+- Unlike the 2018 general election precinct-level turnout statistics,
+  which account for all methods of voting, the precinct-level 2018
+  general election results include only votes cast on election day.
+- Not all precincts have Republican vote totals for the 2018 general
+  election for county council, since there was no Republican candidate
+  in District 3.
+
+The following sections discuss how I resolved the questions above and
+tried to work around the various obstacles.
+
+### Deciding on an appropriate council size
+
+Currently the Howard County Council has five members. It has not
+increased in size in the over fifty years since Howard County became a
+charter county and replaced its board of county commissioners with a
+county council. How does the number of people per council member in
+Howard County compare to the values for other Maryland counties and
+Baltimore city?
+
+I create a data table `md_people_per_member_tb` using the Maryland
+adjusted population per precinct, first summing over the precincts in
+each county, then adding columns for the county names and the sizes of
+their respective councils or boards of county commissioners, and then
+dividing the county (adjusted) populations by those sizes.
+
+```{r md_people_per_member_tb}
+md_pop_by_county_tb <- md_pop_by_block_tb %>%
+  ungroup() %>%
+  select(County, Adj_Population) %>%
+  group_by(County) %>%
+  summarize(Adj_Population = sum(Adj_Population))
+
+md_people_per_member_tb <- md_pop_by_county_tb %>%
+  left_join(md_council_structure_tb, by = "County") %>%
+  mutate(Size = At_Large + By_District,
+         Pop_Per_Member = round(Adj_Population / Size, 0)) %>%
+  select(County, Name, Adj_Population, Size, Pop_Per_Member)
+
+ratio_val <- md_people_per_member_tb %>%
+  filter(Name == "Howard County") %>%
+  select(Pop_Per_Member) %>%
+  as.numeric()
+
+county_with_max_ratio_tb <- md_people_per_member_tb %>%
+  arrange(desc(Pop_Per_Member)) %>%
+  head(1)
+
+county_with_min_ratio_tb <- md_people_per_member_tb %>%
+  arrange(Pop_Per_Member) %>%
+  head(1)
+```
+
+I then plot the population per council member or commissioner,
+arranging the counties in rank order by population per member.
+
+```{r ggplot_people_per_member_tb}
+md_people_per_member_tb %>%
+  mutate(Name = sub("( County)?$", "", Name)) %>%
+  mutate(Name = fct_reorder(Name, -Pop_Per_Member)) %>%
+  ggplot() +
+  geom_col(aes(x = Name, y = Pop_Per_Member)) +
+  gghighlight(Name == "Howard") +
+  scale_y_continuous(breaks = seq(0, 140000, 20000), label = comma) +
+  xlab("County") +
+  ylab("People per Member") +
+  labs(
+    title = "People per Council Member or County Commissioner",
+    subtitle = "Includes Members Elected At-Large and by District",
+    caption = "Data sources:\n  Maryland Department of Planning\n  Maryland Manual On-Line\nCreated using the tidyverse R package"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+  theme(axis.title.x = element_text(margin = margin(t = 5))) +
+  theme(axis.title.y = element_text(margin = margin(r = 10))) +
+  theme(plot.caption = element_text(margin = margin(t = 15), hjust = 0))
+```
+
+It’s apparent from the graph that Howard County has a fairly high
+ratio of people per council member, about
+`r format(round(ratio_val, -3), big.mark = ",")`
+people per member. This compares to an average ratio of
+`r format(round(mean(md_people_per_member_tb$Pop_Per_Member), -3), big.mark = ",")`
+people per member and a median of
+`r format(round(median(md_people_per_member_tb$Pop_Per_Member), -3), big.mark = ",")`.
+`r county_with_max_ratio_tb$Name` has the highest ratio, about
+`r format(round(county_with_max_ratio_tb$Pop_Per_Member, -3), big.mark = ",")`
+people per council member, while
+`r county_with_min_ratio_tb$Name` has the lowest ratio, about
+`r format(round(county_with_min_ratio_tb$Pop_Per_Member, -3), big.mark = ",")`
+people per county commissioner.
+
+My proposal is to expand the Howard County Council from five members
+to fifteen members. This would lower the ratio of people per council
+member to about
+`r format(round(ratio_val / 3, -3), big.mark = ",")`
+people per member, right at the current median value for Maryland
+counties.
+
+With this change the new ranking of counties would be as in the
+following graph.
+
+```{r ggplot_people_per_member_proposed}
+md_people_per_member_tb %>%
+  mutate(Pop_Per_Member = ifelse(Name == "Howard County",
+                                 Pop_Per_Member / 3,
+                                 Pop_Per_Member)) %>%
+  mutate(Name = sub("( County)?$", "", Name)) %>%
+  mutate(Name = fct_reorder(Name, -Pop_Per_Member)) %>%
+  ggplot() +
+  geom_col(aes(x = Name, y = Pop_Per_Member)) +
+  gghighlight(Name == "Howard") +
+  scale_y_continuous(breaks = seq(0, 140000, 20000), label = comma) +
+  xlab("County") +
+  ylab("People per Member") +
+  labs(
+    title = "People per Council Member or County Commissioner",
+    subtitle = "After Proposed Howard County Council Expansion",
+    caption = "Data sources:\n  Maryland Department of Planning\n  Maryland Manual On-Line\nCreated using the tidyverse R package"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+  theme(axis.title.x = element_text(margin = margin(t = 5))) +
+  theme(axis.title.y = element_text(margin = margin(r = 10))) +
+  theme(plot.caption = element_text(margin = margin(t = 15), hjust = 0))
+```
+
+### Accounting for census block data quality
+
+As briefly noted above, the published 2020 Census block-level data was
+manipulated in various ways by the US Census Bureau in an attempt to
+preserve the privacy of people’s personal demographic data.  The basic
+idea is that for a given census block the published data will contain
+more or fewer people than are present in the original count.
+
+See “[Differential Privacy and the 2020 Census][dp1]” for the official
+justification for doing this, a [blog post by Jessica Hullman][dp2]
+discussing some of the controversy around this practice, and [articles
+on the RedistrictingOnline.org site][dp3] discussing how it might
+affect redistricting efforts.
+
+[dp1]: https://www.census.gov/library/fact-sheets/2021/differential-privacy-and-the-2020-census.html
+[dp2]: https://statmodeling.stat.columbia.edu/2021/08/27/shots-taken-shots-returned-regarding-the-census-motivation-for-using-differential-privacy-and-btw-its-not-an-algorithm/
+[dp3]: https://redistrictingonline.org/?s=%22differential+privacy%22
+
+```{r avg_pop}
+pop_val <- md_pop_by_block_tb %>%
+  filter(County == "24027") %>%
+  summarize(Adj_Population = sum(Adj_Population)) %>%
+  as.numeric()
+
+num_blocks_val <- md_pop_by_block_tb %>%
+  filter(County == "24027") %>%
+  summarize(n = n()) %>%
+  as.numeric()
+
+num_precincts_val <- precinct_district_tb %>%
+  summarize(n = n()) %>%
+  as.numeric()
+
+avg_pop_per_block_val <- pop_val / num_blocks_val
+avg_pop_per_precinct_val <- pop_val / num_precincts_val
+```
+
+This deliberately introduced “noise” is particularly problematic when it
+comes to block-level data on race and ethnicity. Howard County has
+
+`r num_blocks_val` census blocks and a total (adjusted) population of
+about
+`r format(round(pop_val, -3), big.mark = ",")` people, so the number
+of people per block is about
+`r format(round(avg_pop_per_block_val, -1), big.mark = ",")` on
+average.  If only a few people of a given race or ethnicity live in a
+given census block, the noise may greatly distort their numbers as
+published in the adjusted population data for redistricting.
+
+On the other hand Howard County has only
+`r num_precincts_val` precincts,
+so the average adjusted population per precinct is about
+`r format(round(avg_pop_per_precinct_val, -2), big.mark = ",")`.
+This number is large enough so that hopefully the noise introduced at
+the block level will get cancelled out at the precinct level, and I
+can treat the precinct-level numbers on race and ethnicity as being at
+least somewhat close to the actual values.
+
+I thus create a second data table `md_pop_by_precinct_tb` that
+aggregates the population data by precinct (i.e., for all census
+blocks associated with each precinct). Note that this also eliminates
+the census block, census block group, and census tract variables from
+the resulting data table.
+
+```{r md_pop_by_precinct_tb}
+md_pop_by_precinct_tb <- md_pop_by_block_tb %>%
+  group_by(State, County, Precinct) %>%
+  summarize(across(Adj_Population:Adj_NH18__2__Races, sum))
+```
+
+Working with precincts rather than census blocks also simplifies the
+redistricting calculations and drawing the redistricting maps, since
+manipulating population, electoral, and geospatial data for
+`r num_precincts_val` precincts is considerably less work than doing
+so for
+`r num_blocks_val` census blocks.
+
+This is also why I use the Howard County GIS data for precinct
+boundaries instead of the block boundaries in the published Maryland
+data. It’s possible to combine the block boundary lines to calculate
+boundaries for the precincts of which they’re part, but it’s much
+simpler just to use the already-created precinct boundary data.
+
+### Accounting for races and ethnic groups
+
+One of my goals in redistricting is to ensure that racial and ethnic
+groups are not disadvantaged in the drawing of district boundaries. A
+key question in redistricting is therefore how to account for the
+various racial and ethnic populations.
+
+To a large degree this has already been done for us by the US Census
+Bureau’s policy. In particular, the Bureau identifies Hispanic people
+as a unitary ethnic group, regardless of their race, and then groups
+all non-Hispanic people into five racial groups: White, Black, Asian
+(which includes both East Asians and South Asians), American Indians,
+native Hawaiians, people identifying as some other race, and
+multiracial people (i.e., people identifying as belonging to two or
+more races).
+
+```{r groups_tb, echo = FALSE, results = "hide"}
+groups_tb <- md_pop_by_precinct_tb %>%
+  filter(County == "24027") %>%
+  summarize(across(Adj_Population:Adj_NH18__2__Races, sum))
+```
+
+For Howard County as a whole the breakdown of groups is as follows:
+`r round(100 * groups_tb$Adj_Hispanic_Origin / groups_tb$Adj_Population, 0)`%
+persons of Hispanic origin, with remaining (non-Hispanic) population
+`r round(100 * groups_tb$Adj_NH_Wht / groups_tb$Adj_Population, 0)`%
+White,
+`r round(100 * groups_tb$Adj_NH_Asn / groups_tb$Adj_Population, 0)`%
+Asian,
+`r round(100 * groups_tb$Adj_NH_Blk / groups_tb$Adj_Population, 0)`%
+Black, and
+
+`r round(100 * groups_tb$Adj_NH_2__Races / groups_tb$Adj_Population, 0)`%
+multiracial, with the number of American Indians, native Hawaiians,
+and people of other races negligible.  (The breakdown for those 18
+years of age or older is similar but leans slighty whiter:
+`r round(100 * groups_tb$Adj_H18__Pop / groups_tb$Adj_18__Pop, 0)`%
+Hispanic origin,
+`r round(100 * groups_tb$Adj_NH18__Wht / groups_tb$Adj_18__Pop, 0)`%
+White,
+`r round(100 * groups_tb$Adj_NH18__Asn / groups_tb$Adj_18__Pop, 0)`%
+Asian,
+`r round(100 * groups_tb$Adj_NH18__Blk / groups_tb$Adj_18__Pop, 0)`%
+Black,
+`r round(100 * groups_tb$Adj_NH18__2__Races / groups_tb$Adj_18__Pop, 0)`%
+multiracial, and the remaining groups negligible.)
+
+Hispanic, White, Black, and Asian people have traditionally been
+targeted by politicians as separate interest groups, so it’s
+appropriate to take their numbers into account in redistricting. At
+the other end of the spectrum the populations of American Indians,
+native Hawaiians, and people of other races in Howard County are so
+small that it doesn’t make sense to factor them into the calculations.
+
+That leaves multiracial people as an interesting corner case. It’s not
+clear to what degree they have unified political interests, but at the
+same time their numbers are so large (and growing) that it feels wrong
+to leave them out of consideration in redistricting. I’ve therefore
+chosen to combine the multiracial population with the other smaller
+groups to form a ”rest of the population” group separate from the main
+White, Asian, Black, and Hispanic groups.
+
+A second question is to consider only people age 18 or older, or to
+consider everyone, including children who can’t vote. I’ve chosen to
+include everyone: there will be many young people eligible to vote in
+the 2022 county council races who were not eligible in 2018. Also,
+since redrawn district boundaries are typically in effect until the
+next decennial census, by the time of the 2030 county council races
+two-thirds of those under 18 in 2018 will be eligible to vote.
+
+Based on the above considerations, I use the data table
+`md_pop_by_precinct_tb` to create a new data table
+`pop_by_precinct_tb`.  I filter the data to include only Howard County
+(dispensing with the `State` and `County` variables after first
+removing the grouping that includes them), combine the American
+Indian, Hawaiian, and “other race” categories with the “two or more
+races” category to create a single “rest of the non-Hispanic
+population” category, and discard all the variables for the
+18-and-over population.
+
+```{r pop_by_precinct_tb}
+pop_by_precinct_tb <- md_pop_by_precinct_tb %>%
+  ungroup() %>%
+  filter(County == "24027") %>%
+  mutate(Adj_NH_Rest = Adj_NH_Ind + Adj_NH_Hwn + Adj_NH_Oth + Adj_NH_2__Races) %>%
+  select(Precinct, Adj_Population, Adj_Hispanic_Origin,
+         Adj_NH_Wht, Adj_NH_Blk, Adj_NH_Asn, Adj_NH_Rest)
+```
+
+### Accounting for political parties: registration vs. votes
+
+Another of my goals in redistricting is to ensure that new district
+boundaries do not disadvantage one or the other of the two main
+political parties. (The other parties are insignificant in terms of
+their electoral impact, so they can safely be ignored when it comes to
+redistricting. However note that this may change in future if Howard
+County adopts ranked choice voting for the county council.)
+
+```{r turnout_tb}
+turnout_tb <- turnout_by_precinct_tb %>%
+  summarize(across(c(POLLS:ELIGIBLE_VOTERS, TOTAL_VOTES), sum))
+
+dem_turnout_tb <- turnout_by_precinct_tb %>%
+  filter(PARTY == "DEMOCRAT") %>%
+  summarize(across(c(POLLS:ELIGIBLE_VOTERS, TOTAL_VOTES), sum))
+
+rep_turnout_tb <- turnout_by_precinct_tb %>%
+  filter(PARTY == "REPUBLICAN") %>%
+  summarize(across(c(POLLS:ELIGIBLE_VOTERS, TOTAL_VOTES), sum))
+```
+
+The first possible way to measure relative party strength is based on
+voter registration. As of the 2018 general election there were about
+`r format(round(turnout_tb$ELIGIBLE_VOTERS, -3), big.mark = ",")`
+registered voters in Howard County, of whom
+`r round(100 * dem_turnout_tb$ELIGIBLE_VOTERS / turnout_tb$ELIGIBLE_VOTERS, 0)`%
+were registered Democrats and
+`r round(100 * rep_turnout_tb$ELIGIBLE_VOTERS / turnout_tb$ELIGIBLE_VOTERS, 0)`%
+were registered Republicans.  Democrats thus had a nearly 2-to-1
+registration advantage over Republicans.
+
+However this is misleading, for at least two reasons. First, the
+parties may have different levels of success in terms of motivating
+their registered voters to actually vote. For example, in the 2018
+general election
+`r round(100 * dem_turnout_tb$TOTAL_VOTES / dem_turnout_tb$ELIGIBLE_VOTERS, 0)`%
+of registered Democrats actually voted, versus
+`r round(100 * rep_turnout_tb$TOTAL_VOTES / rep_turnout_tb$ELIGIBLE_VOTERS, 0)`%
+of registered Republicans.
+
+```{r ce_all_votes_val}
+ce_all_votes_val <- all_votes_by_candidate_tb %>%
+  filter(`Office Name` == "County Executive") %>%
+  summarize(`Total Votes` = sum(`Total Votes`)) %>%
+  as.numeric()
+
+dem_ce_all_votes_val <- all_votes_by_candidate_tb %>%
+  filter(`Candidate Name` == "Calvin Ball") %>%
+  summarize(`Total Votes` = sum(`Total Votes`)) %>%
+  as.numeric()
+
+rep_ce_all_votes_val <- all_votes_by_candidate_tb %>%
+  filter(`Candidate Name` == "Allan H. Kittleman") %>%
+  summarize(`Total Votes` = sum(`Total Votes`)) %>%
+  as.numeric()
+```
+
+Second, and more important, nominally independent voters tend to lean
+toward one party or another, and even registered voters of one party
+may cross party lines to vote for another party’s candidate. In
+particular, Republican candidates can poll much better than Republican
+registration totals might suggest. For example, in the 2018 general
+election the Republican candidate for county executive (Allan
+Kittleman) won
+`r round(100 * rep_ce_all_votes_val / ce_all_votes_val, 0)`%
+of the vote, compared to
+`r round(100 * dem_ce_all_votes_val / ce_all_votes_val, 0)`%
+for the Democratic candidate (Calvin Ball). (And of course Kittleman
+actually won election as county executive in 2014.)
+
+For this reason I’ve chosen to take into account only election
+results, not registration numbers. But which election(s) should I use?
+My choice is to use both the county council election results and the
+county executive election results. I include the county executive
+results because they demonstrate the potential high level of
+Republican vote share given strong candidates with some level of
+cross-party appeal.
+
+```{r cc_ex3_all_votes_val}
+cc_ex3_all_votes_val <- all_votes_by_candidate_tb %>%
+  filter(`Office Name` == "County Council", `Office District` != "003") %>%
+  summarize(`Total Votes` = sum(`Total Votes`)) %>%
+  as.numeric()
+
+dem_cc_ex3_all_votes_val <- all_votes_by_candidate_tb %>%
+  filter(`Office Name` == "County Council", `Office District` != "003", Party == "DEM") %>%
+  summarize(`Total Votes` = sum(`Total Votes`)) %>%
+  as.numeric()
+
+rep_cc_ex3_all_votes_val <- all_votes_by_candidate_tb %>%
+  filter(`Office Name` == "County Council", `Office District` != "003", Party == "REP") %>%
+  summarize(`Total Votes` = sum(`Total Votes`)) %>%
+  as.numeric()
+```
+
+What about the 2018 county council election results? If we exclude
+District 3, in which there was no Republican candidate for county
+council, about
+`r format(round(cc_ex3_all_votes_val, -3), big.mark = ",")`
+people voted for county council candidates, with Democratic candidates
+winning about
+`r format(round(100 * dem_cc_ex3_all_votes_val / cc_ex3_all_votes_val, 0), big.mark = ",")`%
+of those votes and Republican candidates winning about
+`r format(round(100 * rep_cc_ex3_all_votes_val / cc_ex3_all_votes_val, 0), big.mark = ",")`%.
+The Republican vote share is higher than one might expect based on
+voter registration statistics, but lower than what was achieved in the
+county executive race.
+
+### Estimating precinct-level Republican votes in District 3
+
+As mentioned above in the 2018 general election there was no
+Republican county council candidate in District 3, where the
+Democratic candidate (Christiana Rigby) ran unopposed. In order to
+provide a complete data set for the redistricting algorithm I estimate
+how many votes a hypothetical GOP candidate would have received in
+District 3.
+
+I do this by adding up the votes for the Republican county council
+candidates in the other four districts (Raj Kathuria, Lisa Kim, John
+Liao, and David Yungmann) and comparing that total to the number of
+votes for the Republican candidate for county executive (Allan
+Kittleman) in those same four districts.
+
+Note that in order to compare apples to apples I must use only votes
+cast on election day, since the precinct-level results, and thus the
+district-level results for the county executive race computed from
+them, are for election day only.
+
+(I also calculate the election night results for all Democratic county
+council candidates outside District 3, because I will need that number
+later.)
+
+```{r rep_cc_vs_ce_val}
+rep_cc_ex3_en_votes_val <- en_votes_by_precinct_tb %>%
+  filter(`Office Name` == "County Council",
+         District != "003",
+         Party == "REP") %>%
+  summarize(`Election Night Votes` = sum(`Election Night Votes`)) %>%
+  as.numeric()
+
+rep_ce_ex3_en_votes_val <- en_votes_by_precinct_tb %>%
+  filter(`Office Name` == "County Executive",
+         District != "003",
+         Party == "REP") %>%
+  summarize(`Election Night Votes` = sum(`Election Night Votes`)) %>%
+  as.numeric()
+
+rep_cc_vs_ce_val <- rep_cc_ex3_en_votes_val / rep_ce_ex3_en_votes_val
+
+dem_cc_ex3_en_votes_val <- en_votes_by_precinct_tb %>%
+  filter(`Office Name` == "County Council",
+         District != "003",
+         Party == "DEM") %>%
+  summarize(`Election Night Votes` = sum(`Election Night Votes`)) %>%
+  as.numeric()
+```
+
+In 2018 Republican county council candidates outside District 3
+received on average about
+`r round(100 * rep_cc_vs_ce_val, 2)`% of the vote that the GOP
+candidate for county executive did in those districts.
+
+At this point I take the original data table `en_votes_by_precinct_tb`
+and create a “wide” table `en_votes_by_precinct_wide_tb` by combining
+the fields for the office and for the party into a single field,
+getting rid of all the unneeded fields, and then using `pivot_wider()`
+to convert the different rows containing election night vote totals
+for the county executive and county council races into different
+columns.
+
+This simplifies calculating estimated election night votes for a
+hypothetical Republican candidate in District 3, producing a second
+wide table .est_en_votes_by_precinct_wide_tb`. This wide format is
+also the format required as input to the AutoRedistrict software, so I
+use it for the remaining steps.
+
+```{r prep}
+en_votes_by_precinct_wide_tb <- en_votes_by_precinct_tb %>%
   mutate(`Office by Party` = paste(`Office Name`, "-", `Party`, sep = "")) %>%
-  select(VTD, `Office by Party`, `Election Night Votes`) %>%
+  select(Precinct, `Office by Party`, `Election Night Votes`) %>%
   pivot_wider(names_from = `Office by Party`,
               values_from = `Election Night Votes`,
               values_fill = 0)
+
+est_en_votes_by_precinct_wide_tb <- en_votes_by_precinct_wide_tb %>%
+  mutate(`County Council-REP` = ifelse(`County Council-REP` == 0,
+                                       round(rep_cc_vs_ce_val * `County Executive-REP`, 0),
+                                       `County Council-REP`))
 ```
 
-I join the two tables `precinct_sf` and `election_2010` using their
-common field `VTD` to create a new shapefile containing precinct boundaries,
-(adjusted) populations (broken down by race), and 2010 election results for
-county executive and county council.
+### Accounting for early voting and absentee voting
 
-```{r redistricting_sf}
-redistricting_sf <- inner_join(precinct_sf, election_2010, by = "VTD")
+What I want for redistricting purposes is party vote share per
+precinct for both the county council and the county executive races,
+i.e., how many people voted for the Democratic candidate for county
+council (or county executive) in a given precinct vs. how many people
+voted for the Republican candidate for county council (or county
+executive) in that same precinct.
+
+I started with precinct-level results for the county council and
+county executive races, but only for votes cast on election day, and
+not including results for a Republican county council candidate in
+District 3, since no one ran. I then estimated what a hypothetical
+Republican candidate in District 3 would have polled in each precinct,
+using the per-precinct results for Allan Kittleman multiplied by a
+factor based on how Republican county council candidates in other
+districts fared relative to Kittleman.
+
+I now have precinct-level election day vote shares for both county
+executive and cou for all precincts, including estimated shares for
+District 3. However I now have the problem that the true vote shares
+per precinct may differ from those based on election day results,
+since they don’t take into account the affects of early voting and
+voting by mail (i.e., using absentee ballots).
+
+```{r ce_all_vs_en_val}
+ce_en_votes_val <- all_votes_by_candidate_tb %>%
+  filter(`Office Name` == "County Executive") %>%
+  summarize(`Election Night Votes` = sum(`Election Night Votes`)) %>%
+  as.numeric()
+
+dem_ce_en_votes_val <- all_votes_by_candidate_tb %>%
+  filter(`Candidate Name` == "Calvin Ball") %>%
+  summarize(`Election Night Votes` = sum(`Election Night Votes`)) %>%
+  as.numeric()
+
+rep_ce_en_votes_val <- all_votes_by_candidate_tb %>%
+  filter(`Candidate Name` == "Allan H. Kittleman") %>%
+  summarize(`Election Night Votes` = sum(`Election Night Votes`)) %>%
+  as.numeric()
+
+dem_ce_all_vs_en_val = dem_ce_all_votes_val / dem_ce_en_votes_val
+
+rep_ce_all_vs_en_val = rep_ce_all_votes_val / rep_ce_en_votes_val
 ```
 
-Finally, I write the shapefile out to disk, to be used as input to the
-AutoRedistrict application.
+Accounting for this is important because those voting for Democratic
+candidates have different voting habits than those voting for
+Republican candidates. To take but one example, if only election day
+votes mattered then Allan Kittleman would be county executive today,
+since on election day he received
+`r format(rep_ce_en_votes_val, big.mark = ",")` votes compared to
+`r format(dem_ce_en_votes_val, big.mark = ",")` for Calvin Ball.
+However Ball did much better in early voting, and ended up winning
+`r format(dem_ce_all_votes_val, big.mark = ",")` to
+`r format(rep_ce_all_votes_val, big.mark = ",")`.
+Put another way, Ball’s total vote was
+`r round(100 * (dem_ce_all_vs_en_val - 1), 0)`% greater than his
+election day vote total, while Allan Kittleman’s total vote was only
+`r round(100 * (rep_ce_all_vs_en_val - 1), 0)`% greater than his
+election day result.
+
+This suggests a possible approach: estimate precinct-level overall
+vote shares (including early voting and absentee ballots) by
+multiplying each precinct’s election day results for Calvin Ball by
+`r round(dem_ce_all_vs_en_val, 2)`,
+and multiplying each precinct’s election day results for Allan
+Kittleman by
+`r round(rep_ce_all_vs_en_val, 2)`.
+
+But, one might ask, since we have precinct-level numbers for turnout
+by party, including early voting and absentee ballots by party, why
+can’t we compute a multiplicative factor for each precinct
+individually? The short answer is that the turnout statistics are for
+registered voters, so such an approach would not account for
+registered Democrats crossing party lines to vote Republican (or vice
+versa), nor for independent voters. Using county-wide factors is thus
+the preferred approach.
+
+What about estimating per-precinct vote shares for county council
+races?  We can look at the difference between election day votes and
+all votes for the two parties’ county council candidates, again
+ignoring District 3.  I’ve already calculated the vote totals, so I
+just need to compute the ratio of all votes to election day votes for
+each party.
+
+```{r cc_ex3_all_vs_en}
+dem_cc_ex3_all_vs_en_val = dem_cc_ex3_all_votes_val / dem_cc_ex3_en_votes_val
+
+rep_cc_ex3_all_vs_en_val = rep_cc_ex3_all_votes_val / rep_cc_ex3_en_votes_val
+```
+
+The situation is similar to that for the county executive race: the
+combined total vote for all Democratic county council candidates
+outside District 3 was
+`r round(100 * (dem_cc_ex3_all_vs_en_val - 1), 0)`% greater than their
+combined vote on election day, while the combined total vote for all
+Republican county council candidates outside District 3 was only
+`r round(100 * (rep_cc_ex3_all_vs_en_val - 1), 0)`% greater than their
+combined election day result.
+
+I can now calculate estimated precinct-level overall vote shares for
+the two parties, taking the wide table
+`est_en_votes_by_precinct_wide_tb` with election night vote shares
+(estimated for the county council race in District 3) and multiplying
+the precinct-level votes for each race and party by the multiplicative
+factors calculated above, to create a new wide table
+`est_en_votes_by_precinct_wide_tb`.
+
+```{r est_all_votes_by_precinct_wide_tb}
+est_all_votes_by_precinct_wide_tb <- est_en_votes_by_precinct_wide_tb %>%
+  mutate(`County Executive-REP` = round(rep_ce_all_vs_en_val * `County Executive-REP`, 0),
+         `County Executive-DEM` = round(dem_ce_all_vs_en_val * `County Executive-DEM`, 0),
+         `County Council-REP` = round(rep_cc_ex3_all_vs_en_val * `County Council-REP`, 0),
+         `County Council-DEM` = round(dem_cc_ex3_all_vs_en_val * `County Council-DEM`, 0))
+```
+
+We can test the consistency of the estimated vote shares by totaling
+the county executive votes for all precincts. These should match the
+county-wide vote totals from the official results.
+
+```{r est_all_votes}
+est_all_votes_wide_tb <- est_all_votes_by_precinct_wide_tb %>%
+  summarize(across(`County Executive-REP`:`County Council-DEM`, sum))
+
+est_all_votes_wide_tb
+```
+
+Compare the estimated vote totals for Calvin Ball and Allan Kittleman
+to their actual vote totals of
+`r dem_ce_all_votes_val` and
+`r rep_ce_all_votes_val` respectively.
+
+### Creating the input file to the redistricting software
+
+I now have all the data I need to create an input file for the
+AutoRedistrict redirecting software.
+
+I join the geospatial data table `precinct_sf` together with the data
+tables `pop_by_precinct_tb` and `est_all_votes_by_precinct_wide_tb`
+using their common field `Precinct` to create a new geospatial data
+table containing precinct boundaries, (adjusted) populations (broken
+down by race and ethnicity), and estimated 2018 per-precinct votes for
+Democratic and Republican county executive candidates and county
+council candidates (including a hypothetical Republican candidate in
+District 3).
+
+```{r redistricting_input_sf}
+redistricting_input_sf <- precinct_sf %>%
+  inner_join(est_all_votes_by_precinct_wide_tb, by = "Precinct") %>%
+  inner_join(pop_by_precinct_tb, by = "Precinct")
+```
+
+Finally, I write the resulting geospatial data out to disk, to be used
+as input to the AutoRedistrict application.
 
 ```{r st_write}
-st_write(redistricting_sf, "redistricting.shp", append = FALSE)
+st_write(redistricting_input_sf, "redistricting-input.shp", append = FALSE)
 ```
 
 ## Appendix
 
 ### Caveats
 
-The election data omits votes cast by third parties or for write-in candidates.
-In practice the number of these votes is very small, and should not affect the
-redistricting results.
+See the discussion above about noise in census block-level data,
+missing data for the 2018 general election county council race
+in District 3, and the lack of precinct-level results for early
+voting and voting by mail.
+
+The election data used omits votes cast by third parties or for
+write-in candidates.  In practice the number of these votes is very
+small, and should not affect the redistricting results.
 
 ### References
 
-Data derived from the 2010 census and used for Maryland redistricting is
-available from the "[Precinct Population Count and Maps][ppc]" page
-published by the Maryland Department of Planning. The data is combined with
-precinct boundaries to create the [2010 precinct shapefile][ps] (distributed
-as a zip file).
+Data derived from the 2020 census and used for Maryland redistricting
+is available from the "[2020 Redistricting Data for Maryland][rdmd]"
+page published by the Maryland Citizens Redistricting Commission. I
+used the [CSV format data][cfd] because I didn’t need the block-level
+geospatial data, just the population data.
 
-[ppc]: https://planning.maryland.gov/Redistricting/Pages/2010/precinct.aspx
-[ps]: https://planning.maryland.gov/Redistricting/Documents/2010zip/precinct2010.zip
+[rdmd]: https://redistricting.maryland.gov/Pages/data.aspx
+[cfd]: https://apps.planning.maryland.gov/redistricting/data/Adjusted2020CSV.zip
 
-Precinct-level results for the Howard County 2010 general election are
-available from the "[Data Files for the 2010 Gubernatorial Election
-Results][df2010]" page published by the Maryland Board of Elections. This
-analysis uses the [precinct results for Howard County][prhc].
+This data is adjusted according to Maryland law (which for
+redistricting purposes treats prisoners as being counted at their
+place of residence prior to incarceration). It’s unclear how this
+adjustment interacts with the adjustment the US Census Bureau applied
+to census block data in an attempt to protect people’s privacy.
 
-[df2010]: https://elections.maryland.gov/elections/2010/election_data/index.html
-[prhc]: https://elections.maryland.gov/elections/2010/election_data/Howard_By_Precinct_2010_General.csv
+Precinct-level results for the Howard County 2018 general election are
+available from the “[Data Files for the 2018 Gubernatorial Election
+Results][df2018]” page published by the Maryland Board of
+Elections. This analysis uses the [precinct results for Howard
+County][prhc].
+
+[df2018]: https://elections.maryland.gov/elections/2018/election_data/index.html
+[prhc]: https://elections.maryland.gov/elections/2018/election_data/Howard_By_Precinct_2018_General.csv
+
+As noted above, these results are for election day only, and do not
+include results from early voting or absentee ballots.
+
+Information on the size and structure of county and city councils and
+boards of commissioners is from the [Maryland Manual On-Line][mmo]
+pages for [county councils][mmocc] and [boards of county
+commissioners][mmobc] respectively.
+
+[mmo]: https://msa.maryland.gov/msa/mdmanual/html/mmtoc.html
+[mmocc]: https://msa.maryland.gov/msa/mdmanual/01glance/html/cocoun.html
+[mmobc]: https://msa.maryland.gov/msa/mdmanual/01glance/html/cocomm.html
 
 ### Suggestions for future work
 
-This analysis needs to be updated as soon as the data from the 2020 census is
-released by Maryland Department of Planning.
+There may be better ways to generate suitable election data, or to
+incorporate additional data.
 
 ### Environment
 
