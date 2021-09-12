@@ -49,6 +49,7 @@ I use the following R packages for the following purposes:
 * tools. compute MD5 checksums.
 * gghighlight. customize graphs.
 * scales. customize graphs.
+* knitr. print tabular data.
 
 ```{r libraries, message=FALSE, warning=FALSE}
 library(tidyverse)
@@ -56,6 +57,7 @@ library(sf)
 library(tools)
 library(gghighlight)
 library(scales, warn.conflicts = FALSE)
+library(knitr)
 ```
 
 ### Data sources
@@ -770,20 +772,36 @@ provide a complete data set for the redistricting algorithm I estimate
 how many votes a hypothetical GOP candidate would have received in
 District 3.
 
-I do this by adding up the votes for the Republican county council
-candidates in the other four districts (Raj Kathuria, Lisa Kim, John
-Liao, and David Yungmann) and comparing that total to the number of
-votes for the Republican candidate for county executive (Allan
-Kittleman) in those same four districts.
+One way to do this is to look at how Republican candidates fared in
+other districts, and extrapolate that performance to District 3. I
+first look at the individual performances of the Republican candidates
+in the other districts, comparing that to the performance of the GOP
+county executive candidate in those same districts.
 
 Note that in order to compare apples to apples I must use only votes
 cast on election day as reported on election night, since the
 precinct-level results, and thus the district-level results for the
 county executive race computed from them, are for election day only.
 
-(I also calculate the election night results for all Democratic county
-council candidates outside District 3, because I will need that number
-later.)
+```{r rep_cc1245_vs_ce1245}
+rep_cc1245_vs_ce1245 <- en_votes_by_precinct_tb %>%
+  filter(`Office Name` %in% c("County Council", "County Executive"),
+         District != "003",
+         Party == "REP") %>%
+  group_by(`Office Name`, District) %>%
+  summarize(`Election Night Votes` = sum(`Election Night Votes`), .groups = "drop") %>%
+  pivot_wider(names_from = "Office Name", values_from = "Election Night Votes") %>%
+  mutate(`% CC vs CE` = round(100 * `County Council` / `County Executive`, 1))
+
+rep_cc1245_vs_ce1245 %>% kable(caption = "GOP County Council Candidate Relative Performance")
+```
+
+Some Republican candidates performed better than others relative to the
+performance of the GOP county executive candidate. To estimate the
+performance of a hypothetical generic Republican candidate in District
+3, I compute an overall ratio of Republican county council candidate
+performance relative to Republican county executive candidate
+performance, excluding District 3.
 
 ```{r rep_cc_vs_ce_val}
 rep_cc1245_en_votes_val <- en_votes_by_precinct_tb %>%
@@ -801,19 +819,66 @@ rep_ce1245_en_votes_val <- en_votes_by_precinct_tb %>%
   as.numeric()
 
 rep_cc_vs_ce_val <- rep_cc1245_en_votes_val / rep_ce1245_en_votes_val
+```
 
+Overall in 2018 Republican county council candidates outside District 3
+received about
+`r round(100 * rep_cc_vs_ce_val, 0)`%
+of the election day vote that the GOP candidate for county executive
+did in those districts.
+
+What about the Democratic candidate in District 3? Did Christiana
+Rigby do relatively better because she had no Republican opponent?
+I also look at the individual performances of the Democratic county
+council candidates in each district, comparing that to the performance
+of the Democratic county executive candidate in those same districts.
+(Again, I use only votes cast on election day as recorded on election
+night.)
+
+```{r dem_cc_vs_ce}
+dem_cc_vs_ce <- en_votes_by_precinct_tb %>%
+  filter(`Office Name` %in% c("County Council", "County Executive"),
+         Party == "DEM") %>%
+  group_by(`Office Name`, District) %>%
+  summarize(`Election Night Votes` = sum(`Election Night Votes`), .groups = "drop") %>%
+  pivot_wider(names_from = "Office Name", values_from = "Election Night Votes") %>%
+  mutate(`% CC vs CE` = round(100 * `County Council` / `County Executive`, 1))
+
+dem_cc_vs_ce %>% kable(caption = "Democratic County Council Candidate Relative Performance")
+```
+
+At first glance it looks as if the Democratic county council candidate
+in District 3 performed comparably to Democratic council candidates in
+other districts (especially Districts 1 and 5), and did not receive any
+special boost from not having a GOP opponent.
+
+As I did for the Republican county candidates, I compute an overall
+ratio of Democratic county council candidate performance relative to
+Democratic county executive candidate performance, excluding District 3.
+
+```{r dem_cc_vs_ce_val}
 dem_cc1245_en_votes_val <- en_votes_by_precinct_tb %>%
   filter(`Office Name` == "County Council",
          District != "003",
          Party == "DEM") %>%
   summarize(`Election Night Votes` = sum(`Election Night Votes`)) %>%
   as.numeric()
+
+dem_ce1245_en_votes_val <- en_votes_by_precinct_tb %>%
+  filter(`Office Name` == "County Executive",
+         District != "003",
+         Party == "DEM") %>%
+  summarize(`Election Night Votes` = sum(`Election Night Votes`)) %>%
+  as.numeric()
+
+dem_cc_vs_ce_val <- dem_cc1245_en_votes_val / dem_ce1245_en_votes_val
 ```
 
-In 2018 Republican county council candidates outside District 3
-received on average about
-`r round(100 * rep_cc_vs_ce_val, 2)`% of the vote that the GOP
-candidate for county executive did in those districts.
+Overall in 2018 Democratic county council candidates outside District 3
+received about
+`r round(100 * dem_cc_vs_ce_val, 0)`%
+of the election day vote that the Democratic candidate for county
+executive did in those districts.
 
 At this point I take the original data table `en_votes_by_precinct_tb`
 and create a “wide” table `en_votes_by_precinct_wide_tb` by combining
@@ -824,10 +889,10 @@ for the county executive and county council races into different
 columns.
 
 This simplifies calculating estimated election night votes for a
-hypothetical Republican candidate in District 3, producing a second
-wide table `est_en_votes_by_precinct_wide_tb`. This wide format is
-also the format required as input to the AutoRedistrict software, so I
-use it for the remaining steps.
+hypothetical Republican county council candidate in District 3, producing
+a second wide table `est_en_votes_by_precinct_wide_tb`. (I do _not_
+adjust the election night votes for the Democratic county council
+candidate in District 3, but leave them as is.)
 
 ```{r prep}
 en_votes_by_precinct_wide_tb <- en_votes_by_precinct_tb %>%
@@ -842,6 +907,9 @@ est_en_votes_by_precinct_wide_tb <- en_votes_by_precinct_wide_tb %>%
                                        round(rep_cc_vs_ce_val * `County Executive-REP`, 0),
                                        `County Council-REP`))
 ```
+
+This wide format is also the format required as input to the
+Auto-Redistrict software, so I use it for the remaining steps.
 
 ### Accounting for early voting and absentee voting
 
