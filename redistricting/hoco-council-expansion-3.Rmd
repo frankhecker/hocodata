@@ -1,5 +1,5 @@
 ---
-title: "Howard County Council Expansion, Part 2"
+title: "Howard County Council Expansion, Part 3"
 author: "Frank Hecker"
 date: "`r format(Sys.time(), '%Y-%m-%d')`"
 output:
@@ -17,8 +17,8 @@ knitr::opts_chunk$set(echo = TRUE)
 In this document I display a map of the Howard County Council
 districts produced by running the Auto-Redistrict application to
 create three council districts electing five members per district
-using ranked choice voting.  I also show racial/ethnic and (estimated)
-party vote share by district.
+using ranked choice voting.  I also show racial/ethnic breakdowns for
+each district and (estimated) party vote share by district.
 
 For those readers unfamiliar with the [R statistical software][r] and
 the additional [Tidyverse software][tv] I use to manipulate and plot
@@ -39,13 +39,15 @@ I use the following packages for the following purposes:
 * tidyverse: do general data manipulation.
 * sf: manipulate geospatial data.
 * tigris: get data on roads.
-* tools. compute MD5 checksums.
+* tools: compute MD5 checksums.
+* knitr: display data in tabular format.
 
 ```{r libraries, message=FALSE, warning=FALSE}
 library(tidyverse)
 library(sf)
 library(tigris)
 library(tools)
+library(knitr)
 ```
 
 ### Data sources
@@ -94,7 +96,7 @@ district_name_tb <- tribble(
   3, "West"
 )
 
-new_districts_tb <- read_csv("redistricting-output.csv",
+new_districts_tb <- read_csv("redistricting-output-3-districts.csv",
                              show_col_types = FALSE) %>%
   left_join(district_name_tb, by = "Distrct") %>%
   mutate(District = as.factor(District)) %>%
@@ -132,18 +134,6 @@ I plot the new districts along with the major (and some minor) roads
 to show how the new districts would relate to existing communities in
 Howard County.
 
-Although this was not specified explicitly as part of the
-auto-redistricting process, the new districts nicely divide the county
-into three "communities of interest":
-
-- Southeastern Howard County, including Savage, North Laurel, most of
-  east Columbia south of Route 175, and most of west Columbia except
-  the Village of River Hill.
-- Northeastern Howard County, including Elkridge, Ellicott City south
-  of Route 40, and east Columbia north of Route 175.
-- Western Howard County, including Ellicott City north of Route 40 and
-  the Village of River Hill in Columbia.
-
 ```{r plot}
 palette <- c("#E69F00", "#56B4E9", "#009E73")
 
@@ -154,7 +144,7 @@ redistricting_sf %>%
   scale_fill_manual(values = palette) +
   geom_sf(data = major_roads_geo, color = "white", size = 1.0, fill = NA) +
   geom_sf(data = minor_roads_geo, color = "white", size = 0.5, fill = NA) +
-  labs(title="Districts for 15-Member Council with Ranked Choice Voting",
+  labs(title="Example 3-District Map for 15-Member Howard County Council",
        subtitle = "Automatically Generated using 2020 Census and 2018 Election Data",
        caption = paste0(
          "Data sources:",
@@ -169,8 +159,19 @@ redistricting_sf %>%
   theme(panel.background = element_blank())
 ```
 
+The new districts divide the county into three "communities of
+interest":
+
+- Southeastern Howard County, including Savage, North Laurel, most of
+  east Columbia south of Route 175, and most of west Columbia except
+  the Village of River Hill.
+- Northeastern Howard County, including Elkridge, Ellicott City south
+  of Route 40, and east Columbia north of Route 175.
+- Western Howard County, including Ellicott City north of Route 40,
+  Maple Lawn, and the Village of River Hill in Columbia.
+
 The precinct-level data in `redistricting_sf` contains population
-figures by race. I combine the precinct-level data (in
+figures by race and ethnicity. I combine the precinct-level data (in
 `redistricting_sf`) with the assignment of precincts to council
 districts produced by the Auto-Redistrict application (in
 `new_districts_sf`), and then drop the geometry for the precinct
@@ -204,8 +205,8 @@ racial_breakdown <- district_data %>%
 I plot the racial/ethnic breakdowns by district. I also draw
 horizontal dashed lines representing the quota levels in a five-member
 district using ranked choice voting. (For example, if a candidate can
-get 16.6% of the first preference votes in a five-member district then
-they will automatically be elected. Here 16.6% is the quota.)
+get 16.7% of the first preference votes in a five-member district then
+they will automatically be elected. Here 16.7% is the quota.)
 
 ```{r ggplot_racial}
 palette <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2")
@@ -213,16 +214,16 @@ palette <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2")
 quota = 100 / 6
 
 racial_breakdown %>%
-  gather(key = "Race", value = Vote_Pct, `NH White`:Hispanic) %>%
+  gather(key = "Race", value = Pop_Pct, `NH White`:Hispanic) %>%
   mutate(Race = fct_relevel(Race, c("NH White", "NH Black", "NH Asian", "NH Multiracial", "Hispanic"))) %>%
-  ggplot(mapping = aes(x = District, y = Vote_Pct, fill = Race)) +
+  ggplot(mapping = aes(x = District, y = Pop_Pct, fill = Race)) +
   geom_col(position = "dodge") +
   scale_fill_manual(values = palette) +
   geom_hline(mapping = aes(yintercept = quota), color = "gray", linetype = "dashed") +
   geom_hline(mapping = aes(yintercept = 2 * quota), color = "gray", linetype = "dashed") +
   geom_hline(mapping = aes(yintercept = 3 * quota), color = "gray", linetype = "dashed") +
   geom_hline(mapping = aes(yintercept = 4 * quota), color = "gray", linetype = "dashed") +
-  labs(title="Expanded County Council District Population Percentage By Race",
+  labs(title="3-District Howard County Council Population Percentage By Race/Ethnicity",
        subtitle = "Automatically Generated using 2020 Census and 2018 Election Data",
        caption = paste0(
          "Data sources:",
@@ -230,11 +231,19 @@ racial_breakdown %>%
          "\n  Maryland Board of Elections, 2018 General Election Results",
          "\n  Howard County GIS Division, Precinct Boundaries",
          "\nCreated using the Auto-Redistrict application and tidyverse R package"
-       )
+       ),
+       fill = "Race/Ethnicity"
   ) +
   ylab("Population (%)") +
   theme(plot.caption = element_text(margin = margin(t = 15), hjust = 0)) +
   theme_bw()
+```
+
+I also print the same data in the form of a table:
+
+```{r kable_racial_breakdown}
+racial_breakdown %>%
+  kable(caption = "3-District Howard County Council Population Percentage By Race/Ethnicity")
 ```
 
 I compute the party breakdown for each district.
@@ -255,7 +264,7 @@ party_breakdown <- district_data %>%
 
 I plot the party breakdowns by district, again adding horizontal
 dashed lines to represent the quotas. (For example, if a party’s total
-vote share exceeds 33.3%, or two quotas, that party fields two
+vote share exceeds 33.4%, or two quotas, that party fields two
 candidates, and the two candidates have an equal share of first
 preference votes, then both candidates will automatically be elected.)
 
@@ -273,7 +282,7 @@ party_breakdown %>%
   geom_hline(mapping = aes(yintercept = 3 * quota), color = "gray", linetype = "dashed") +
   geom_hline(mapping = aes(yintercept = 4 * quota), color = "gray", linetype = "dashed") +
   ylab("Estimated Vote (%)") +
-  labs(title="Expanded County Council District Estimated Vote by Party",
+  labs(title="3-District Howard County Council Estimated Party Vote Share",
        subtitle = "Automatically Generated using 2020 Census and 2018 Election Data",
        caption = paste0(
          "Data sources:",
@@ -284,6 +293,13 @@ party_breakdown %>%
   ) +
   theme_bw() +
   theme(plot.caption = element_text(margin = margin(t = 15), hjust = 0))
+```
+
+I also print the same data in the form of a table:
+
+```{r kable_party_breakdown}
+party_breakdown %>%
+  kable(caption = "3-District Howard County Council Estimated Party Vote Share")
 ```
 
 ## Appendix

@@ -17,8 +17,9 @@ knitr::opts_chunk$set(echo = TRUE)
 In this document I display a map of the Howard County Council
 districts produced by running the Auto-Redistrict application to
 create fifteen council districts electing one member per district
-using ranked choice voting.  I also show racial/ethnic and (estimated)
-party vote share by district.
+using ranked choice voting.  I also show racial/ethnic population
+percentages by district and (estimated) party vote share by
+district.
 
 For those readers unfamiliar with the [R statistical software][r] and
 the additional [Tidyverse software][tv] I use to manipulate and plot
@@ -39,13 +40,15 @@ I use the following packages for the following purposes:
 * tidyverse: do general data manipulation.
 * sf: manipulate geospatial data.
 * tigris: get data on roads.
-* tools. compute MD5 checksums.
+* tools: compute MD5 checksums.
+* knitr: display data in tabular format.
 
 ```{r libraries, message=FALSE, warning=FALSE}
 library(tidyverse)
 library(sf)
 library(tigris)
 library(tools)
+library(knitr)
 ```
 
 ### Data sources
@@ -128,7 +131,7 @@ redistricting_sf %>%
   scale_fill_manual(values = palette) +
   geom_sf(data = major_roads_geo, color = "white", size = 1.0, fill = NA) +
   geom_sf(data = minor_roads_geo, color = "white", size = 0.5, fill = NA) +
-  labs(title="Districts for 15-Member Council with One Member per District",
+  labs(title="Example 15-District Howard County Council",
        subtitle = "Automatically Generated using 2020 Census and 2018 Election Data",
        caption = paste0(
          "Data sources:",
@@ -182,12 +185,12 @@ I plot the racial/ethnic breakdowns by district.
 palette <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2")
 
 racial_breakdown %>%
-  gather(key = "Race", value = Vote_Pct, `NH White`:Hispanic) %>%
+  gather(key = "Race", value = Pop_Pct, `NH White`:Hispanic) %>%
   mutate(Race = fct_relevel(Race, c("NH White", "NH Black", "NH Asian", "NH Multiracial", "Hispanic"))) %>%
-  ggplot(mapping = aes(x = District, y = Vote_Pct, fill = Race)) +
+  ggplot(mapping = aes(x = District, y = Pop_Pct, fill = Race)) +
   geom_col(position = "dodge") +
   scale_fill_manual(values = palette) +
-  labs(title="Expanded County Council District Population Percentage By Race",
+  labs(title="15-District Howard County Council Population Percentage By Race/Ethnicity",
        subtitle = "Automatically Generated using 2020 Census and 2018 Election Data",
        caption = paste0(
          "Data sources:",
@@ -195,11 +198,19 @@ racial_breakdown %>%
          "\n  Maryland Board of Elections, 2018 General Election Results",
          "\n  Howard County GIS Division, Precinct Boundaries",
          "\nCreated using the Auto-Redistrict application and tidyverse R package"
-       )
+       ),
+       fill = "Race/Ethnicity"
   ) +
   ylab("Population (%)") +
   theme(plot.caption = element_text(margin = margin(t = 15), hjust = 0)) +
   theme_bw()
+```
+
+I also print the same data in the form of a table:
+
+```{r kable_racial_breakdown}
+racial_breakdown %>%
+  kable(caption = "15-District Howard County Council Population Percentage By Race/Ethnicity")
 ```
 
 I compute the party breakdown for each district.
@@ -230,7 +241,7 @@ party_breakdown %>%
   geom_col(position = "dodge") +
   scale_fill_manual(values = palette) +
   ylab("Estimated Vote (%)") +
-  labs(title="Expanded County Council District Estimated Vote by Party",
+  labs(title="15-District Howard County Council Estimated Party Vote Share",
        subtitle = "Automatically Generated using 2020 Census and 2018 Election Data",
        caption = paste0(
          "Data sources:",
@@ -241,6 +252,13 @@ party_breakdown %>%
   ) +
   theme_bw() +
   theme(plot.caption = element_text(margin = margin(t = 15), hjust = 0))
+```
+
+I also print the same data in the form of a table:
+
+```{r kable_party_breakdown}
+party_breakdown %>%
+  kable(caption = "15-District Howard County Council Estimated Party Vote Share")
 ```
 
 ## Appendix
