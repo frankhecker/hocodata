@@ -213,17 +213,17 @@ racial_breakdown %>%
   kable(caption = "15-District Howard County Council Population Percentage By Race/Ethnicity")
 ```
 
-I compute the party breakdown for each district.
+I compute the party breakdown for each district, using the estimated
+precinct-level votes by party in the 2018 general election for Howard
+County Council.
 
 ```{r party}
 party_breakdown <- district_data %>%
-  mutate(Votes = CEx.DEM + CEx.REP + CCn.DEM + CCn.REP,
-         Dem_Votes = CEx.DEM + CCn.DEM,
-         Rep_Votes = CEx.REP + CCn.REP) %>%
+  mutate(Votes = CCn.DEM + CCn.REP) %>%
   group_by(District) %>%
   summarize(Votes = sum(Votes),
-            Dem_Votes = sum(Dem_Votes),
-            Rep_Votes = sum(Rep_Votes)) %>%
+            Dem_Votes = sum(CCn.DEM),
+            Rep_Votes = sum(CCn.REP)) %>%
   mutate(Democratic = round(100 * Dem_Votes / Votes),
          Republican = round(100 * Rep_Votes / Votes)) %>%
   select(District, Democratic, Republican)
